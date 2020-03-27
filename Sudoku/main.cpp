@@ -6,112 +6,213 @@
 using namespace sf;
 using namespace std;
 
-namespace sudoku
+int theme = 1;
+VideoMode videoMode(500, 650);
+RenderWindow window(videoMode, "SUDOKU", Style::Close);
+
+/**
+* Time formatting and manipulation
+*
+*/
+struct timer {
+	sf::Clock mC;
+	float runTime;
+	bool bPaused;
+	timer() {
+		bPaused = false;
+		runTime = 0;
+		mC.restart();
+	}
+	void Reset() {
+		mC.restart();
+		runTime = 0;
+		bPaused = false;
+	}
+	void Resume() {
+		if (bPaused) {
+			mC.restart();
+		}
+		bPaused = false;
+	}
+	void Pause() {
+		if (!bPaused) {
+			runTime += mC.getElapsedTime().asSeconds();
+		}
+		bPaused = true;
+	}
+	float GetElapsedSeconds() {
+		if (!bPaused) {
+			return runTime + mC.getElapsedTime().asSeconds();
+		}
+		return runTime;
+	}
+	string getElapsedTime()
+	{
+		int seconds = int(GetElapsedSeconds());
+		int minutes = seconds / 60;
+		int hours = minutes / 60;
+		minutes = (seconds - hours * 3600) / 60;
+		seconds -= (minutes * 60 + hours * 3600);
+
+		string time;
+		if (hours > 1)
+			time = to_string(hours) + ":" + to_string(minutes) + ":" + to_string(seconds);
+		else
+			time = to_string(minutes) + ":" + to_string(seconds);
+
+		return time;
+	}
+} timer;
+
+/**
+* Stores the data of a move during the game for later use
+*
+*/
+struct gameMove
 {
-	/**
-	* Time formatting and manipulation
-	*
-	*/
-	struct timer {
-		sf::Clock mC;
-		float runTime;
-		bool bPaused;
-		timer() {
-			bPaused = false;
-			runTime = 0;
-			mC.restart();
-		}
-		void Reset() {
-			mC.restart();
-			runTime = 0;
-			bPaused = false;
-		}
-		void Resume() {
-			if (bPaused) {
-				mC.restart();
-			}
-			bPaused = false;
-		}
-		void Pause() {
-			if (!bPaused) {
-				runTime += mC.getElapsedTime().asSeconds();
-			}
-			bPaused = true;
-		}
-		float GetElapsedSeconds() {
-			if (!bPaused) {
-				return runTime + mC.getElapsedTime().asSeconds();
-			}
-			return runTime;
-		}
-		string getElapsedTime()
-		{
-			int seconds = int(GetElapsedSeconds());
-			int minutes = seconds / 60;
-			int hours = minutes / 60;
-			minutes = (seconds - hours * 3600) / 60;
-			seconds -= (minutes * 60 + hours * 3600);
+	Vector2i index;
+	int number = 0;
+} lastMove;
 
-			string time;
-			if (hours > 1)
-				time = to_string(hours) + ":" + to_string(minutes) + ":" + to_string(seconds);
-			else
-				time = to_string(minutes) + ":" + to_string(seconds);
+/**
+* Controls the process of drawing both pen and numbers on the grid and figuring out the index of the cell which the pen refers to
+*
+*/
+struct positionSystem
+{
+	const Vector2f NUMBERS_MARGIN = { 41,125 };
+	const Vector2f POINTER_MARGIN = { 32,128 };
+	const Vector2f ICON_MARGIN = { 57,47 };
 
-			return time;
-		}
-	};
+	Vector2f margin, factor, position;
+	Vector2i index;
 
-
-	/**
-	* Stores the data of a move during the game for later use
-	*
-	*/
-	struct gameMove
+	Vector2f generate_position()
 	{
-		Vector2i index;
-		int number = 0;
-	};
+		float x = margin.x + (index.x * factor.x),
+			y = margin.y + (index.y * factor.y);
 
-	/**
-	* Controls the process of drawing both pen and numbers on the grid and figuring out the index of the cell which the pen refers to
-	*
-	*/
-	struct positionSystem
+		position = { x,y };
+		return position;
+	}
+
+	Vector2i generate_index()
 	{
-		const Vector2f NUMBERS_MARGIN = { 41,125 };
-		const Vector2f POINTER_MARGIN = { 32,128 };
-		const Vector2f ICON_MARGIN = { 57,47 };
+		int x = (position.x - margin.x) / factor.x,
+			y = (position.y - margin.y) / factor.y;
 
-		Vector2f margin, factor, position;
-		Vector2i index;
+		index = { x,y };
+		return index;
+	}
 
-		Vector2f generate_position()
+};
+
+struct pauseScreen
+{
+	Vector2f size, position;
+	Color shadeColor = { 35,35,35,200 };
+
+	Font font;
+
+	
+	void create(Vector2f size, Vector2f position)
+	{
+		this->size = size;
+		this->position = position;
+
+		//Shade
+		RectangleShape shade;
+		shade.setSize(this->size);
+		shade.setPosition(this->position);
+		shade.setFillColor(shadeColor);
+
+		//Icon
+		Texture texturePause;
+		texturePause.loadFromFile("Assets/Images/pause.png");
+		Sprite spritePause;
+		spritePause.setTexture(texturePause);
+		spritePause.setOrigin(spritePause.getGlobalBounds().width / 2, spritePause.getGlobalBounds().height / 2);
+		spritePause.setPosition(window.getSize().x / 2.0f, window.getSize().y / 3.0f);
+
+		
+		//Text
+		Text pauseText;
+		pauseText.setString("PAUSED");
+		pauseText.setFont(font);
+		pauseText.setFillColor(Color::White);
+		pauseText.setCharacterSize(84);
+		pauseText.setOrigin(pauseText.getGlobalBounds().width / 2, pauseText.getGlobalBounds().height / 2);
+		pauseText.setPosition(window.getSize().x / 2.0f, spritePause.getPosition().y + spritePause.getGlobalBounds().height);
+
+
+		window.draw(shade);
+		window.draw(spritePause);
+		window.draw(pauseText);
+	}
+};
+
+struct imageButton
+{
+	//fields
+	Texture textureStates[3];
+	
+	Sprite spriteState;
+
+	Vector2f buttonSize = { 0,0 }, buttonPosition = {0,0};
+
+	bool clicked = false;
+
+	//functions
+	bool mouseHover(Vector2f pos, Vector2f size)
+	{
+		sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
+
+		bool in_x_area = ((mouse_pos.x >= pos.x) & (mouse_pos.x <= (pos.x + size.x))), //mouse is in the y axis
+			in_y_area = ((mouse_pos.y >= pos.y) & (mouse_pos.y <= (pos.y + size.y)));  //mouse is in the x axis
+
+		return in_x_area && in_y_area;
+	}
+
+	bool mouseDown(Vector2f pos, Vector2f size)
+	{
+		return mouseHover(pos, size) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
+	}
+
+	void init(sf::Vector2f pos, string btnId)
+	{
+		string directory = "Assets/Buttons/" + btnId + "/" + to_string(theme) + "/";
+		buttonPosition = pos;
+		
+		//textures loading
+		textureStates[0].loadFromFile(directory + "normal.png");
+		textureStates[1].loadFromFile(directory + "hover.png");
+		textureStates[2].loadFromFile(directory + "down.png");
+
+		//sprite
+		spriteState.setTexture(textureStates[0]);
+		spriteState.setPosition(buttonPosition);
+		//size
+		buttonSize.x = static_cast<float>(spriteState.getLocalBounds().width);
+		buttonSize.y = static_cast<float>(spriteState.getLocalBounds().height);
+
+		if (mouseHover(spriteState.getPosition(), buttonSize))
+			spriteState.setTexture(textureStates[1]);
+		
+		if(mouseDown(spriteState.getPosition(), buttonSize))
 		{
-			float x = margin.x + (index.x * factor.x),
-				y = margin.y + (index.y * factor.y);
-
-			position = { x,y };
-			return position;
+			spriteState.setTexture(textureStates[2]);
+			clicked = true;
 		}
+		
+		window.draw(spriteState);
+	}
+};
 
-		Vector2i generate_index()
-		{
-			int x = (position.x - margin.x) / factor.x,
-				y = (position.y - margin.y) / factor.y;
-
-			index = { x,y };
-			return index;
-		}
-
-	};
-
-}
 
 
 #pragma region GLOBAL VARIABLES
-const int MOVE_SLEEP_DURATION = 175;
 
+const int MOVE_SLEEP_DURATION = 175;
 
 int totalMoves = 0; //total moves taken in the game
 int correctMoves = 0; //correct moves taken in the game
@@ -122,11 +223,10 @@ Vector2i penTracer = { 0,0 };
 
 int completedCells = 41;
 
-sudoku::gameMove lastMove;
-sudoku::timer timer;
 bool paused = false;
-VideoMode videoMode(500, 650);
-RenderWindow window(videoMode, "SUDOKU", Style::Close);
+
+string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
+
 #pragma endregion
 
 
@@ -180,7 +280,7 @@ void remove(Text source[9][9], Vector2i index)
 * @param move The move to be removed
 *
 */
-void undo(Text source[9][9], sudoku::gameMove move)
+void undo(Text source[9][9], gameMove move)
 {
 	remove(source, move.index);
 }
@@ -216,6 +316,7 @@ void updateText(Text& textObj, string initialString, string newData)
 	textObj.setString(str);
 }
 
+
 int main()
 {
 	int unsolvedTemplate[9][9] =
@@ -244,24 +345,20 @@ int main()
 		{1,2,3,4,5,6,7,8,9}
 	};
 
-#pragma region Containers
-	//Loading textures
-	Texture textureOptions;
-	textureOptions.loadFromFile("Assets/Images/options.png");
-
+#pragma region Textures
+	Texture textureBackground;
+	textureBackground.loadFromFile("Assets/Images/Background.png");
+	Sprite spriteBackground(textureBackground);
+	spriteBackground.setPosition({ 0, 0 });
+	
 	Texture textureGrid;
 	textureGrid.loadFromFile("Assets/Images/grid.png");
-
-	//assigning textures and positioning sprites
-	Sprite spriteOptions(textureOptions);
-	spriteOptions.setPosition(25, 25);
-
 	Sprite spriteGrid(textureGrid);
-	spriteGrid.setPosition(25, 120);
+	spriteGrid.setPosition({25, 120});
 #pragma endregion
 
-#pragma region Typography
-	float typographyScale = 0.7f,
+#pragma region Text
+	float textScale = 0.7f,
 		positionY = 580.0f;
 
 	//Fonts (Product Sans)
@@ -273,32 +370,37 @@ int main()
 
 	Text unsolvedTemplateText[9][9]; //Sudoku numbers to be drawn
 
-	string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
 	Text difficultyText; //Game difficulty
 	difficultyText.setString("NORMAL");
 	difficultyText.setFont(googleRegular);
-	difficultyText.setScale({ typographyScale,typographyScale });
+	difficultyText.setScale({ textScale,textScale });
 	difficultyText.setPosition(25, positionY);
 
 	Text falseMovesText;
 	falseMovesText.setFont(googleBold);
 	falseMovesText.setFillColor(Color(255, 128, 128));
-	falseMovesText.setScale({ typographyScale,typographyScale });
+	falseMovesText.setScale({ textScale,textScale });
 	falseMovesText.setPosition(160, positionY);
 
 	Text timeText; //Game time
 	timeText.setString("TIME: 01:24");
 	timeText.setFont(googleRegular);
-	timeText.setScale({ typographyScale,typographyScale });
+	timeText.setScale({ textScale,textScale });
 	timeText.setPosition(380, positionY);
 #pragma endregion
 
+
+#pragma region Buttons
+	string idButtons[5] = { "Menu", "Hint", "Pause", "Undo", "Settings" };
+	imageButton buttons[5];
+#pragma endregion
+	
 	/*************************
 	*******SUDOKU PEN*********
 	**************************/
 	RectangleShape pen({ 35,35 });
 	//Pen styling
-	pen.setFillColor(Color(0, 0, 0)); //transparent fill color
+	pen.setFillColor(Color::Transparent);
 	pen.setOutlineColor(Color::White);
 	pen.setOutlineThickness(3);
 
@@ -315,7 +417,7 @@ int main()
 			//setting font (Google Sans)
 			unsolvedTemplateText[i][j].setFont(googleBlack);
 			//setting position
-			sudoku::positionSystem posNumber;
+			positionSystem posNumber;
 			posNumber.margin = posNumber.NUMBERS_MARGIN;
 			posNumber.factor = { 50,50 };
 			posNumber.index = { i,j };
@@ -353,11 +455,11 @@ int main()
 		/************************
 		*****UPDATING LABELS*****
 		*************************/
-#pragma region UPDATING LABELS
+#pragma region UPDATING Text
 
 		updateText(falseMovesText, "FALSE MOVES: ", to_string(falseMoves));
 
-		//keep updating the time unless the game is paused
+		//updating the time text unless the game is paused
 		if (!paused)
 			updateText(timeText, "TIME: ", timer.getElapsedTime());
 #pragma endregion
@@ -367,7 +469,7 @@ int main()
 		 ****************KEYBOARD INPUT******************
 		 ***********************************************/
 
-
+		//Stop all kinds of input when the game is paused
 		if (!paused)
 		{
 #pragma region KEYBOARD INPUT
@@ -458,7 +560,7 @@ int main()
 			}
 
 			//Setting pen position
-			sudoku::positionSystem posPen;
+			positionSystem posPen;
 			posPen.margin = posPen.POINTER_MARGIN;
 			posPen.factor = { 50,50 };
 			posPen.index = { penTracer.x, penTracer.y };
@@ -572,15 +674,22 @@ int main()
 		 //clearing the window
 		window.clear();
 
-		//drawing sprites
-		RectangleShape background({ 500, 650 });
-		background.setFillColor(Color(50, 50, 50));
-		window.draw(background);
 
-		window.draw(spriteOptions);
+		window.draw(spriteBackground);		
 		window.draw(spriteGrid);
 
-		//Drawing components
+		//buttons
+		positionSystem posButtons;
+		posButtons.margin = { 25, 25 };
+		posButtons.factor = { 80,70 };
+		for (int i = 0; i < 5; i++)
+		{
+			posButtons.index = { i, 0 };
+			if (i > 0)
+				posButtons.margin.x += 12;
+			buttons[i].init(posButtons.generate_position(), idButtons[i]);
+		}
+		
 		//Pen
 		window.draw(pen);
 		//Numbers
@@ -603,28 +712,12 @@ int main()
 		//Draw an overlay shader to indicate a paused game
 		if (paused)
 		{
-			RectangleShape pauseShade({ static_cast<float>(textureGrid.getSize().x), static_cast<float>(textureGrid.getSize().y) });
-			pauseShade.setPosition({ 25, 120 });
-			pauseShade.setFillColor(Color(50, 50, 50, 240));
-
-			Texture texturePause;
-			texturePause.loadFromFile("Assets/pause.png");
-			Sprite spritePause;
-			spritePause.setTexture(texturePause);
-			spritePause.setOrigin(spritePause.getGlobalBounds().width / 2, spritePause.getGlobalBounds().height / 2);
-			spritePause.setPosition(window.getSize().x / 2.0f, window.getSize().y / 3.0f);
-
-			Text pauseText;
-			pauseText.setString("PAUSED");
-			pauseText.setFont(googleBlack);
-			pauseText.setFillColor(Color::White);
-			pauseText.setCharacterSize(84);
-			pauseText.setOrigin(pauseText.getGlobalBounds().width / 2, pauseText.getGlobalBounds().height / 2);
-			pauseText.setPosition(window.getSize().x / 2.0f, spritePause.getPosition().y + spritePause.getGlobalBounds().height);
-
-			window.draw(pauseShade);
-			window.draw(spritePause);
-			window.draw(pauseText);
+			pauseScreen pauseScreen;
+			pauseScreen.font = googleBlack;
+			pauseScreen.shadeColor = Color(20, 30, 48, 200);
+			Vector2f size = { static_cast<float>(textureGrid.getSize().x), static_cast<float>(textureGrid.getSize().y) };
+			pauseScreen.create(size,
+				{ 25, 120 });
 		}
 
 		window.display();
