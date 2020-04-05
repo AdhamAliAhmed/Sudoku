@@ -875,19 +875,19 @@ int main()
 
 				cout << index.x << ',' << index.y << endl;
 
-				positionSystem shadowPos;
-				shadowPos.margin = shadowPos.PEN_MARGIN;
-				shadowPos.factor = { 50,50 };
-				shadowPos.index = index;
+				positionSystem shadowPenPos;
+				shadowPenPos.margin = shadowPenPos.PEN_MARGIN;
+				shadowPenPos.factor = { 50,50 };
+				shadowPenPos.index = index;
 				
-				shadowPen.setPosition(shadowPos.generate_position());
+				shadowPen.setPosition(shadowPenPos.generate_position());
 
 				drawShadowPen = true;
 
 				if (Mouse::isButtonPressed(Mouse::Left))
 				{
 					penTracer = index;
-					pen.setPosition(shadowPos.generate_position());
+					pen.setPosition(shadowPenPos.generate_position());
 				}
 			}
 			else
