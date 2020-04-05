@@ -3,11 +3,17 @@
 #include <iostream>
 #include<string>
 
+struct glyphButton;
+struct button;
+struct gif;
+
 using namespace sf;
 using namespace std;
 
+const int WIDTH = 500, HEIGHT = 650;
+
 int theme = 1;
-VideoMode videoMode(500, 650);
+VideoMode videoMode(WIDTH, HEIGHT);
 RenderWindow window(videoMode, "SUDOKU", Style::Close);
 
 /**
@@ -81,7 +87,7 @@ struct gameMove
 struct positionSystem
 {
 	const Vector2f NUMBERS_MARGIN = { 41,125 };
-	const Vector2f POINTER_MARGIN = { 32,128 };
+	const Vector2f PEN_MARGIN = { 32.6,127.5 };
 	const Vector2f ICON_MARGIN = { 57,47 };
 
 	Vector2f margin, factor, position;
@@ -91,123 +97,295 @@ struct positionSystem
 	{
 		float x = margin.x + (index.x * factor.x),
 			y = margin.y + (index.y * factor.y);
-
+		
 		position = { x,y };
 		return position;
 	}
-
-	Vector2i generate_index()
-	{
-		int x = (position.x - margin.x) / factor.x,
-			y = (position.y - margin.y) / factor.y;
-
-		index = { x,y };
-		return index;
-	}
-
 };
 
-struct pauseScreen
+#pragma region object center
+Vector2f center(Text text)
 {
-	Vector2f size, position;
-	Color shadeColor = { 35,35,35,200 };
+	FloatRect textRect = text.getLocalBounds();
 
-	Font font;
-
-	
-	void create(Vector2f size, Vector2f position)
-	{
-		this->size = size;
-		this->position = position;
-
-		//Shade
-		RectangleShape shade;
-		shade.setSize(this->size);
-		shade.setPosition(this->position);
-		shade.setFillColor(shadeColor);
-
-		//Icon
-		Texture texturePause;
-		texturePause.loadFromFile("Assets/Images/pause.png");
-		Sprite spritePause;
-		spritePause.setTexture(texturePause);
-		spritePause.setOrigin(spritePause.getGlobalBounds().width / 2, spritePause.getGlobalBounds().height / 2);
-		spritePause.setPosition(window.getSize().x / 2.0f, window.getSize().y / 3.0f);
-
-		
-		//Text
-		Text pauseText;
-		pauseText.setString("PAUSED");
-		pauseText.setFont(font);
-		pauseText.setFillColor(Color::White);
-		pauseText.setCharacterSize(84);
-		pauseText.setOrigin(pauseText.getGlobalBounds().width / 2, pauseText.getGlobalBounds().height / 2);
-		pauseText.setPosition(window.getSize().x / 2.0f, spritePause.getPosition().y + spritePause.getGlobalBounds().height);
-
-
-		window.draw(shade);
-		window.draw(spritePause);
-		window.draw(pauseText);
-	}
-};
-
-struct imageButton
+	return {textRect.left + textRect.width / 2.0f,
+		textRect.top + textRect.height / 2.0f};
+}
+Vector2f center(Sprite sprite)
 {
-	//fields
-	Texture textureStates[3];
+	return {sprite.getLocalBounds().width / 2.0f, sprite.getLocalBounds().height / 2.0f};
+}
+Vector2f center(RectangleShape rect)
+{
+	return {rect.getSize().x/2.0f, rect.getSize().y/2.0f};
+}
+Vector2f center(RenderWindow &window)
+{
+	return {window.getSize().x / 2.0f, window.getSize().y / 2.0f}; 
+}
+Vector2f center(gif gif);
+#pragma endregion
+
+
+struct button
+{
+	//components
+	RectangleShape frame;
+	Text text;
+
+	//properties
+	Vector2f buttonPosition, buttonSize;
+	Color idleColor, hoverColor, downColor, textColor;
+	Font textFont;
+
+	short state = 0;
 	
-	Sprite spriteState;
-
-	Vector2f buttonSize = { 0,0 }, buttonPosition = {0,0};
-
-	bool clicked = false;
-
-	//functions
-	bool mouseHover(Vector2f pos, Vector2f size)
+	bool mouseHover()
 	{
 		sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
+		FloatRect bounds = frame.getGlobalBounds(); //rectangle bounds
+		
+		bool xInBounds = ((mouse_pos.x >= bounds.left) & (mouse_pos.x <= (bounds.left + bounds.width))), //mouse is in the y axis
+			yInBounds = ((mouse_pos.y >= bounds.top) & (mouse_pos.y <= (bounds.top + bounds.height)));  //mouse is in the x axis
 
-		bool in_x_area = ((mouse_pos.x >= pos.x) & (mouse_pos.x <= (pos.x + size.x))), //mouse is in the y axis
-			in_y_area = ((mouse_pos.y >= pos.y) & (mouse_pos.y <= (pos.y + size.y)));  //mouse is in the x axis
-
-		return in_x_area && in_y_area;
+		return xInBounds && yInBounds;
+	}
+	
+	bool mouseDown()
+	{
+		return mouseHover() && sf::Mouse::isButtonPressed(sf::Mouse::Left);
 	}
 
-	bool mouseDown(Vector2f pos, Vector2f size)
-	{
-		return mouseHover(pos, size) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
-	}
-
-	void init(sf::Vector2f pos, string btnId)
-	{
-		string directory = "Assets/Buttons/" + btnId + "/" + to_string(theme) + "/";
+	void create(sf::Vector2f pos, string text)
+	{		
 		buttonPosition = pos;
-		
-		//textures loading
-		textureStates[0].loadFromFile(directory + "normal.png");
-		textureStates[1].loadFromFile(directory + "hover.png");
-		textureStates[2].loadFromFile(directory + "down.png");
+		this -> text.setString(text);
 
-		//sprite
-		spriteState.setTexture(textureStates[0]);
-		spriteState.setPosition(buttonPosition);
-		//size
-		buttonSize.x = static_cast<float>(spriteState.getLocalBounds().width);
-		buttonSize.y = static_cast<float>(spriteState.getLocalBounds().height);
+		frame.setSize(buttonSize);	
+		frame.setOrigin(center(frame));
+		frame.setPosition(buttonPosition);
 
-		if (mouseHover(spriteState.getPosition(), buttonSize))
-			spriteState.setTexture(textureStates[1]);
-		
-		if(mouseDown(spriteState.getPosition(), buttonSize))
+		if(mouseHover())
 		{
-			spriteState.setTexture(textureStates[2]);
-			clicked = true;
+			state = 1;
+			
+			frame.setFillColor(hoverColor);		
+			
+			if(mouseDown())
+			{
+				state = 2;
+				
+				frame.setFillColor(downColor);
+				frame.setOutlineColor(Color(200,200,200));
+
+				frame.setScale(0.97f,0.97f);
+			}
+
 		}
+		else
+		{
+			state = 0;
+			
+			frame.setFillColor(idleColor);
+		}
+
+		this -> text.setFont(textFont);
+		
+		this -> text.setOrigin(center(this -> text));
+
+		FloatRect frameRect = frame.getGlobalBounds();
+		this -> text.setPosition(frameRect.left + frameRect.width /2.0f, 
+			frameRect.top + frameRect.height /2.0f);
+		this -> text.setFont(textFont);
+		this -> text.setCharacterSize(19);
+		this -> text.setFillColor(textColor);
+		
+		window.draw(frame);
+		window.draw(this -> text);
+	}
+};
+
+bool clicked(button btn)
+{
+	if(btn.state == 2)
+		return true;
+	return false;
+}
+
+
+bool mouseHover(Sprite sprite){
+	sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
+
+	bool foo = sprite.getGlobalBounds().contains({static_cast<float>(mouse_pos.x), static_cast<float>(mouse_pos.y)});
+
+	return foo;
+}
+bool mouseDown(Sprite sprite){
+	return mouseHover(sprite) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
+}
+struct glyphButton
+{
+	//Variables
+	Vector2f buttonSize = { 50, 50 },
+	buttonPosition = { 0,0 };
+	
+	Texture textureSheet;
+	
+	IntRect tracer{0,0, 50,50};
+	Sprite spriteState;
+
+	short state = 0;
+	
+	//functions
+	void create(sf::Vector2f pos, string id)
+	{
+		buttonPosition = pos;
+		spriteState.setPosition(buttonPosition);
+		
+		string directory = "Assets/buttons/" + id + ".png";
+		textureSheet.setSmooth(true);
+		textureSheet.loadFromFile(directory);
+
+		spriteState.setTexture(textureSheet);
+		
+		if(mouseHover(spriteState))
+		{
+			tracer.left = 50;
+
+			state = 1;
+			
+			if(mouseDown(spriteState))
+			{
+				tracer.left = 100;
+
+				state = 2;
+			}
+		}
+		else
+		{
+			tracer.left = 0;
+
+			state = 0;
+		}
+		
+		spriteState.setTextureRect(tracer);
 		
 		window.draw(spriteState);
 	}
 };
+bool clicked(glyphButton btn)
+{
+	if(btn.state == 2)
+		return true;
+	return false;
+}
 
+IntRect gifTracer{0,0,200,200};
+struct gif
+{
+	Texture textureSheet;
+	Sprite spriteFrame;
+
+	Vector2f gifPosition;
+	
+	int numFrames = 0;
+	
+	Vector2i frameSize {0,0};
+
+	
+	void animate(string directory, bool repeat = false)
+	{
+		textureSheet.setSmooth(true);
+		textureSheet.loadFromFile(directory);
+		spriteFrame.setPosition(gifPosition);
+
+		spriteFrame.setTexture(textureSheet);
+		spriteFrame.setTextureRect(gifTracer);
+
+		if(gifTracer.left == frameSize.y * (numFrames - 1))
+		{
+			gifTracer.left = 0;
+		}
+		else
+		{
+			gifTracer.left += frameSize.y;
+			sleep(milliseconds(30));
+		}
+
+		
+		window.draw(spriteFrame);
+	}
+};
+Vector2f center(gif gif)
+{
+	return {gif.frameSize.x / 2.0f, gif.frameSize.y / 2.0f};
+}
+
+
+struct pauseScreen
+{
+	bool dueToInactivity = false;
+	
+	Vector2f position;
+
+	RectangleShape shade;
+	Color shadeColor = { 20,20,20,150 };
+
+	Texture textureContent;
+	Sprite spriteContent;
+
+	gif dinoGif;
+	
+	Text text;
+
+	Font textFont;
+	
+	glyphButton btnResume;
+
+	
+	void create(bool dueToInactivity)
+	{
+		float margin = 20.0f;
+
+		//Shade
+		shade.setPosition({0,0});
+		shade.setSize({WIDTH, HEIGHT});
+		shade.setFillColor(shadeColor);
+		
+		//Content
+		textureContent.loadFromFile("Assets/Menus/pause-content.png");
+		spriteContent.setTexture(textureContent);
+		spriteContent.setOrigin(center(spriteContent));
+		spriteContent.setPosition(center(window));
+
+		//gif
+		dinoGif.frameSize = {200,200};
+		dinoGif.numFrames = 10;
+		dinoGif.spriteFrame.setOrigin(center(dinoGif));
+		dinoGif.gifPosition = {center(window).x, spriteContent.getGlobalBounds().top + 110};
+
+		//Text
+		text.setString("Paused");
+		text.setFont(textFont);
+		text.setFillColor(Color(52,193,206));
+		text.setCharacterSize(64);
+		text.setOrigin(center(text));
+		text.setPosition(center(window).x, spriteContent.getGlobalBounds().top + 220);
+		
+		
+		//Button
+		btnResume.spriteState.setOrigin(25,25);
+		btnResume.spriteState.setScale(0.8,0.8);
+		
+		window.draw(shade);
+		window.draw(spriteContent);
+		dinoGif.animate("Assets/Sprite_sheets/dino_dance.png", true);
+		window.draw(text);
+		FloatRect frameContent = spriteContent.getGlobalBounds();
+		if(!dueToInactivity)
+			btnResume.create({center(window).x, frameContent.top + 320.0f}, "resume");
+	}
+};
 
 
 #pragma region GLOBAL VARIABLES
@@ -223,6 +401,7 @@ Vector2i penTracer = { 0,0 };
 
 int completedCells = 41;
 
+bool pausedDueToInactivity = false;
 bool paused = false;
 
 string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
@@ -316,6 +495,20 @@ void updateText(Text& textObj, string initialString, string newData)
 	textObj.setString(str);
 }
 
+void pause(bool dueToInactivity)
+{
+	timer.Pause();
+	paused = true;
+	pausedDueToInactivity = dueToInactivity;
+}
+
+void resume()
+{
+	timer.Resume();
+	paused = false;
+	pausedDueToInactivity = false;
+}
+
 
 int main()
 {
@@ -345,11 +538,10 @@ int main()
 		{1,2,3,4,5,6,7,8,9}
 	};
 
-#pragma region Textures
+#pragma region Images
 	Texture textureBackground;
-	textureBackground.loadFromFile("Assets/Images/Background.png");
-	Sprite spriteBackground(textureBackground);
-	spriteBackground.setPosition({ 0, 0 });
+	textureBackground.loadFromFile("Assets/Images/Background9.png");
+	Sprite spriteBackground = Sprite(textureBackground);
 	
 	Texture textureGrid;
 	textureGrid.loadFromFile("Assets/Images/grid.png");
@@ -357,6 +549,11 @@ int main()
 	spriteGrid.setPosition({25, 120});
 #pragma endregion
 
+#pragma region Top glyph buttons
+	string btnIds[5] = {"menu", "hint", "pause", "undo", "settings"};
+	glyphButton buttons[5];
+#pragma endregion
+	
 #pragma region Text
 	float textScale = 0.7f,
 		positionY = 580.0f;
@@ -367,42 +564,43 @@ int main()
 	googleBold.loadFromFile("Assets/Fonts/ProductSans-Bold.ttf");
 	googleRegular.loadFromFile("Assets/Fonts/ProductSans-Regular.ttf");
 
-
 	Text unsolvedTemplateText[9][9]; //Sudoku numbers to be drawn
 
 	Text difficultyText; //Game difficulty
 	difficultyText.setString("NORMAL");
 	difficultyText.setFont(googleRegular);
-	difficultyText.setScale({ textScale,textScale });
+	difficultyText.setScale({ textScale,textScale});
 	difficultyText.setPosition(25, positionY);
 
-	Text falseMovesText;
+	Text falseMovesText; //Number of false moves
 	falseMovesText.setFont(googleBold);
 	falseMovesText.setFillColor(Color(255, 128, 128));
 	falseMovesText.setScale({ textScale,textScale });
 	falseMovesText.setPosition(160, positionY);
 
 	Text timeText; //Game time
-	timeText.setString("TIME: 01:24");
 	timeText.setFont(googleRegular);
 	timeText.setScale({ textScale,textScale });
 	timeText.setPosition(380, positionY);
 #pragma endregion
 
-
-#pragma region Buttons
-	string idButtons[5] = { "Menu", "Hint", "Pause", "Undo", "Settings" };
-	imageButton buttons[5];
-#pragma endregion
-	
-	/*************************
-	*******SUDOKU PEN*********
-	**************************/
+#pragma region Sudoku Pens
 	RectangleShape pen({ 35,35 });
-	//Pen styling
+	RectangleShape shadowPen({ 35, 35 });
+
+	//Styling
+		//Main pen
 	pen.setFillColor(Color::Transparent);
 	pen.setOutlineColor(Color::White);
 	pen.setOutlineThickness(3);
+	
+		//Shadow pen
+	bool drawShadowPen = false;
+	shadowPen.setFillColor(Color::Transparent);
+	shadowPen.setOutlineColor(Color(255,255,255,90));
+	shadowPen.setOutlineThickness(3);
+#pragma endregion
+
 
 	/************************************************************************
 	*******COPYING THE UNSOLVED ARRAY IN ORDER TO DRAW IT EACH FRAME*********
@@ -430,23 +628,21 @@ int main()
 	//Game loop
 	while (window.isOpen())
 	{
-		//Closing the game
-		Event evnt{};
-		while (window.pollEvent(evnt))
+		Event event;
+		while (window.pollEvent(event))
 		{
-			switch (evnt.type)
+			switch (event.type)
 			{
 			case Event::Closed:
 				window.close();
 				break;
-
 			case Event::LostFocus:
-				paused = true;
-				timer.Pause();
+				if(!paused)
+					pause(true);
 				break;
 			case Event::GainedFocus:
-				paused = false;
-				timer.Resume();
+				if(paused && pausedDueToInactivity)
+					resume();
 				break;
 			default: break;
 			}
@@ -455,7 +651,7 @@ int main()
 		/************************
 		*****UPDATING LABELS*****
 		*************************/
-#pragma region UPDATING Text
+#pragma region UPDATING Labels
 
 		updateText(falseMovesText, "FALSE MOVES: ", to_string(falseMoves));
 
@@ -469,6 +665,8 @@ int main()
 		 ****************KEYBOARD INPUT******************
 		 ***********************************************/
 
+
+		
 		//Stop all kinds of input when the game is paused
 		if (!paused)
 		{
@@ -561,7 +759,7 @@ int main()
 
 			//Setting pen position
 			positionSystem posPen;
-			posPen.margin = posPen.POINTER_MARGIN;
+			posPen.margin = posPen.PEN_MARGIN;
 			posPen.factor = { 50,50 };
 			posPen.index = { penTracer.x, penTracer.y };
 			Vector2f pos = posPen.generate_position();
@@ -648,7 +846,7 @@ int main()
 			 ********************UN-DOING A MOVE*********************
 			 *******************************************************/
 #pragma region 5-UNDO
-			if (Keyboard::isKeyPressed(Keyboard::Z) && evnt.key.control) //user pressed ctrl+z in order to undo the last move
+			if (Keyboard::isKeyPressed(Keyboard::Z) && event.key.control) //user pressed ctrl+z in order to undo the last move
 			{
 				//solves the issue of removing number at (0,0) at the beginning of the game
 				if (modifiableCell(lastMove.index, solvedTemplate, unsolvedTemplate))
@@ -663,14 +861,62 @@ int main()
 				}
 			}
 #pragma endregion
+			
 #pragma endregion
+
+
+#pragma region MOUSE INPUT
+			Vector2i mousePos = Mouse::getPosition(window);
+			if (spriteGrid.getGlobalBounds().contains(mousePos.x, mousePos.y))
+			{
+				system("CLS");
+				
+				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
+
+				cout << index.x << ',' << index.y << endl;
+
+				positionSystem shadowPos;
+				shadowPos.margin = shadowPos.PEN_MARGIN;
+				shadowPos.factor = { 50,50 };
+				shadowPos.index = index;
+				
+				shadowPen.setPosition(shadowPos.generate_position());
+
+				drawShadowPen = true;
+
+				if (Mouse::isButtonPressed(Mouse::Left))
+				{
+					penTracer = index;
+					pen.setPosition(shadowPos.generate_position());
+				}
+			}
+			else
+			{
+				drawShadowPen = false;
+			}
+
+			
+#pragma endregion
+
+#pragma region Buttons handling
+		if(clicked(buttons[2]))
+		{
+			pause(false);
 		}
+		if(clicked(buttons[3]))
+		{
+			undo(unsolvedTemplateText, lastMove);
+		}
+#pragma endregion
+
+		}
+
+
 
 		/********************************************************
 		 *******UPDATING AND SWITCHING BUFFERS*******************
 		 *******************************************************/
 #pragma region UPDATING AND SWITCHING BUFFERS
-
 		 //clearing the window
 		window.clear();
 
@@ -678,20 +924,12 @@ int main()
 		window.draw(spriteBackground);		
 		window.draw(spriteGrid);
 
-		//buttons
-		positionSystem posButtons;
-		posButtons.margin = { 25, 25 };
-		posButtons.factor = { 80,70 };
-		for (int i = 0; i < 5; i++)
-		{
-			posButtons.index = { i, 0 };
-			if (i > 0)
-				posButtons.margin.x += 12;
-			buttons[i].init(posButtons.generate_position(), idButtons[i]);
-		}
-		
-		//Pen
+		//Pens
 		window.draw(pen);
+		if(drawShadowPen)
+			window.draw(shadowPen);
+
+		
 		//Numbers
 		for (int i = 0; i < 9; i++)
 		{
@@ -701,7 +939,6 @@ int main()
 					continue;
 				window.draw(unsolvedTemplateText[j][i]);
 			}
-
 		}
 
 		//texts
@@ -709,17 +946,34 @@ int main()
 		window.draw(falseMovesText);
 		window.draw(difficultyText);
 
+
+		//Top glyph buttons positioning and drawing
+		positionSystem posButtons;
+		posButtons.margin = { 25, 25 };
+		posButtons.factor = { 50,45 };
+		
+		for (int i = 0; i < 5; i++)
+		{
+			posButtons.index = { i, 0 };
+			if (i > 0)
+			{
+				posButtons.margin.x += 50;
+			}
+
+			buttons[i].create(posButtons.generate_position(), btnIds[i]);
+		}
+		
 		//Draw an overlay shader to indicate a paused game
 		if (paused)
 		{
 			pauseScreen pauseScreen;
-			pauseScreen.font = googleBlack;
-			pauseScreen.shadeColor = Color(20, 30, 48, 200);
-			Vector2f size = { static_cast<float>(textureGrid.getSize().x), static_cast<float>(textureGrid.getSize().y) };
-			pauseScreen.create(size,
-				{ 25, 120 });
-		}
+			pauseScreen.textFont = googleRegular;
+			pauseScreen.create(pausedDueToInactivity);
 
+			if(clicked(pauseScreen.btnResume))
+				resume();
+		}
+		
 		window.display();
 
 #pragma endregion
