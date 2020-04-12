@@ -18,7 +18,6 @@ RenderWindow window(videoMode, "SUDOKU", Style::Close);
 
 /**
 * Time formatting and manipulation
-*
 */
 struct timer {
 	sf::Clock mC;
@@ -29,32 +28,47 @@ struct timer {
 		runTime = 0;
 		mC.restart();
 	}
-	void Reset() {
+	/**
+	* Resets the clock
+	*/
+	void reset() {
 		mC.restart();
 		runTime = 0;
 		bPaused = false;
 	}
-	void Resume() {
+	/**
+	* Resumes the clock
+	*/
+	void resume() {
 		if (bPaused) {
 			mC.restart();
 		}
 		bPaused = false;
 	}
-	void Pause() {
+	/**
+	* Pauses the clock
+	*/
+	void pause() {
 		if (!bPaused) {
 			runTime += mC.getElapsedTime().asSeconds();
 		}
 		bPaused = true;
 	}
-	float GetElapsedSeconds() {
+	/**
+	* Returns the elapsed seconds
+	*/
+	float getElapsedSeconds() {
 		if (!bPaused) {
 			return runTime + mC.getElapsedTime().asSeconds();
 		}
 		return runTime;
 	}
+	/**
+	* Return a string representation of the elapsed time
+	*/
 	string getElapsedTime()
 	{
-		int seconds = int(GetElapsedSeconds());
+		int seconds = int(getElapsedSeconds());
 		int minutes = seconds / 60;
 		int hours = minutes / 60;
 		minutes = (seconds - hours * 3600) / 60;
@@ -93,17 +107,240 @@ struct positionSystem
 	Vector2f margin, factor, position;
 	Vector2i index;
 
-	Vector2f generate_position()
+	/**
+	* Generates a position on the screen using three factors: margin, factor and index
+	*/
+	Vector2f generatePosition()
 	{
 		float x = margin.x + (index.x * factor.x),
 			y = margin.y + (index.y * factor.y);
 		
-		position = { x,y };
+		position = {x, y};
 		return position;
 	}
 };
 
+/**
+* Creates a pen instance with it default properties
+* @param pen The pen to be used.
+* @param type The type of the pen, either primary pen, shadow pen or a highlighter.
+*/
+void createPenInstance(RectangleShape &pen, short type);
+
+struct highlightingSystem
+{
+	Vector2i index = {0,0};
+
+	/**
+	* Highlights the row of a specific cell in the sudoku grid
+	* @param y the y index of the cell
+	* @param posObj The PositionSystem object that positions the pointers.
+	*/
+	void highlightRow(int y, positionSystem posObj)
+	{
+		for (int i = 0; i < 9; i++)
+		{
+			RectangleShape rect;
+			createPenInstance(rect,2);
+			
+			posObj.index = {i , y};
+			rect.setPosition(posObj.generatePosition());
+			if(posObj.index != index)
+				window.draw(rect);
+		}
+	}
+
+	/**
+	* Highlights the column of a specific cell in the sudoku grid
+	* @param x the x index of the cell
+	* @param posObj The PositionSystem object that positions the pointers.
+	*/
+	void highlightColumn(int x, positionSystem posObj)
+	{
+		for (int i = 0; i < 9; i++)
+		{		
+			RectangleShape rect;
+			createPenInstance(rect, 2);
+			
+			posObj.index = {x , i};
+			rect.setPosition(posObj.generatePosition());
+			if(posObj.index != index)
+				window.draw(rect);
+		}
+	}
+
+	/**
+	* Highlights the block that a specific cell belongs to in the sudoku grid
+	* @param index the index of the cell
+	* @param posObj The PositionSystem object that positions the pointers.
+	*/
+	void highlightBlock(Vector2i index, positionSystem posObj)
+	{
+		Vector2i indexes[9];
+		int row = index.y, column = index.x;
+
+		//determining the block
+		//first rank
+		if((row >= 0) & (row <= 2))
+		{
+			if((column >= 0) & (column <= 2)) //first block
+			{
+				indexes[0] = {0,0};
+				indexes[1] = {1,0};
+				indexes[2] = {2,0};
+				indexes[3] = {0,1};
+				indexes[4] = {1,1};
+				indexes[5] = {2,1};
+				indexes[6] = {0,2};
+				indexes[7] = {1,2};
+				indexes[8] = {2,2};
+			}
+			else if((column >= 3) & (column <= 5)) //second block
+			{
+				indexes[0] = {3,0};
+				indexes[1] = {4,0};
+				indexes[2] = {5,0};
+				indexes[3] = {3,1};
+				indexes[4] = {4,1};
+				indexes[5] = {5,1};
+				indexes[6] = {3,2};
+				indexes[7] = {4,2};
+				indexes[8] = {5,2};
+			}
+			else if((column >= 6) & (column <= 8)) //third block
+			{
+				indexes[0] = {6,0};
+				indexes[1] = {7,0};
+				indexes[2] = {8,0};
+				indexes[3] = {6,1};
+				indexes[4] = {7,1};
+				indexes[5] = {8,1};
+				indexes[6] = {6,2};
+				indexes[7] = {7,2};
+				indexes[8] = {8,2};
+			}
+		}
+		//second rank
+		else if((row >= 3) & (row <= 5))
+		{
+			if((column >= 0) & (column <= 2)) //fourth block
+			{
+				indexes[0] = {0,3};
+				indexes[1] = {1,3};
+				indexes[2] = {2,3};
+				indexes[3] = {0,4};
+				indexes[4] = {1,4};
+				indexes[5] = {2,4};
+				indexes[6] = {0,5};
+				indexes[7] = {1,5};
+				indexes[8] = {2,5};
+			}
+			else if((column >= 3) & (column <= 5)) //fifth block
+			{
+				indexes[0] = {3,3};
+				indexes[1] = {4,3};
+				indexes[2] = {5,3};
+				indexes[3] = {3,4};
+				indexes[4] = {4,4};
+				indexes[5] = {5,4};
+				indexes[6] = {3,5};
+				indexes[7] = {4,5};
+				indexes[8] = {5,5};
+			}
+			else if((column >= 6) & (column <= 8)) //sixth block
+			{
+				indexes[0] = {6,3};
+				indexes[1] = {7,3};
+				indexes[2] = {8,3};
+				indexes[3] = {6,4};
+				indexes[4] = {7,4};
+				indexes[5] = {8,4};
+				indexes[6] = {6,5};
+				indexes[7] = {7,5};
+				indexes[8] = {8,5};
+			}
+		}
+		//third rank
+		else if((row >= 6) & (row <= 8))
+		{
+			if((column >= 0) & (column <= 2)) //seventh block
+			{
+				indexes[0] = {0,6};
+				indexes[1] = {1,6};
+				indexes[2] = {2,6};
+				indexes[3] = {0,7};
+				indexes[4] = {1,7};
+				indexes[5] = {2,7};
+				indexes[6] = {0,8};
+				indexes[7] = {1,8};
+				indexes[8] = {2,8};
+			}
+			else if((column >= 3) & (column <= 5)) //eighth block
+			{
+				indexes[0] = {3,6};
+				indexes[1] = {4,6};
+				indexes[2] = {5,6};
+				indexes[3] = {3,7};
+				indexes[4] = {4,7};
+				indexes[5] = {5,7};
+				indexes[6] = {3,8};
+				indexes[7] = {4,8};
+				indexes[8] = {5,8};
+			}
+			else if((column >= 6) & (column <= 8)) //ninth block
+			{
+				indexes[0] = {6,6};
+				indexes[1] = {7,6};
+				indexes[2] = {8,6};
+				indexes[3] = {6,7};
+				indexes[4] = {7,7};
+				indexes[5] = {8,7};
+				indexes[6] = {6,8};
+				indexes[7] = {7,8};
+				indexes[8] = {8,8};
+			}
+		}
+
+		//highlighting th block
+		for (int i = 0; i < 9; i++)
+		{
+			if(indexes[i] == index)
+				continue;		
+
+			RectangleShape rect;
+			createPenInstance(rect, 2);
+
+			posObj.index = indexes[i];
+			rect.setPosition(posObj.generatePosition());
+			if(posObj.index != index)
+				window.draw(rect);
+		}
+	}
+	
+
+	/**
+	* Highlights the row, column and the block of a specific cell in the sudoku grid for ease of use
+	* @param index the index of the cell
+	*/
+	void highlight(Vector2i index)
+	{
+		this -> index = index;
+
+		positionSystem posRects;
+		posRects.margin = posRects.PEN_MARGIN;
+		posRects.factor = {50,50};
+		
+		highlightRow(this -> index.y, posRects);
+		highlightColumn(this -> index.x, posRects);
+		highlightBlock(this -> index, posRects);
+	}
+};
+
 #pragma region object center
+/**
+* Returns the center of a Text object
+* @param text The Text object 
+*/
 Vector2f center(Text text)
 {
 	FloatRect textRect = text.getLocalBounds();
@@ -111,118 +348,37 @@ Vector2f center(Text text)
 	return {textRect.left + textRect.width / 2.0f,
 		textRect.top + textRect.height / 2.0f};
 }
+/**
+* Returns the center of a sprite object
+* @param sprite The Sprite object 
+*/
 Vector2f center(Sprite sprite)
 {
 	return {sprite.getLocalBounds().width / 2.0f, sprite.getLocalBounds().height / 2.0f};
 }
+/**
+* Returns the center of a RectangleShape object
+* @param rect The RectangleShape object 
+*/
 Vector2f center(RectangleShape rect)
 {
 	return {rect.getSize().x/2.0f, rect.getSize().y/2.0f};
 }
+/**
+* Returns the center of a RenderWindow object
+* @param window The RenderWindow object 
+*/
 Vector2f center(RenderWindow &window)
 {
 	return {window.getSize().x / 2.0f, window.getSize().y / 2.0f}; 
 }
+/**
+* Returns the center of a gif object
+* @param gif The gif object 
+*/
 Vector2f center(gif gif);
 #pragma endregion
 
-
-struct button
-{
-	//components
-	RectangleShape frame;
-	Text text;
-
-	//properties
-	Vector2f buttonPosition, buttonSize;
-	Color idleColor, hoverColor, downColor, textColor;
-	Font textFont;
-
-	short state = 0;
-	
-	bool mouseHover()
-	{
-		sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
-		FloatRect bounds = frame.getGlobalBounds(); //rectangle bounds
-		
-		bool xInBounds = ((mouse_pos.x >= bounds.left) & (mouse_pos.x <= (bounds.left + bounds.width))), //mouse is in the y axis
-			yInBounds = ((mouse_pos.y >= bounds.top) & (mouse_pos.y <= (bounds.top + bounds.height)));  //mouse is in the x axis
-
-		return xInBounds && yInBounds;
-	}
-	
-	bool mouseDown()
-	{
-		return mouseHover() && sf::Mouse::isButtonPressed(sf::Mouse::Left);
-	}
-
-	void create(sf::Vector2f pos, string text)
-	{		
-		buttonPosition = pos;
-		this -> text.setString(text);
-
-		frame.setSize(buttonSize);	
-		frame.setOrigin(center(frame));
-		frame.setPosition(buttonPosition);
-
-		if(mouseHover())
-		{
-			state = 1;
-			
-			frame.setFillColor(hoverColor);		
-			
-			if(mouseDown())
-			{
-				state = 2;
-				
-				frame.setFillColor(downColor);
-				frame.setOutlineColor(Color(200,200,200));
-
-				frame.setScale(0.97f,0.97f);
-			}
-
-		}
-		else
-		{
-			state = 0;
-			
-			frame.setFillColor(idleColor);
-		}
-
-		this -> text.setFont(textFont);
-		
-		this -> text.setOrigin(center(this -> text));
-
-		FloatRect frameRect = frame.getGlobalBounds();
-		this -> text.setPosition(frameRect.left + frameRect.width /2.0f, 
-			frameRect.top + frameRect.height /2.0f);
-		this -> text.setFont(textFont);
-		this -> text.setCharacterSize(19);
-		this -> text.setFillColor(textColor);
-		
-		window.draw(frame);
-		window.draw(this -> text);
-	}
-};
-
-bool clicked(button btn)
-{
-	if(btn.state == 2)
-		return true;
-	return false;
-}
-
-
-bool mouseHover(Sprite sprite){
-	sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
-
-	bool foo = sprite.getGlobalBounds().contains({static_cast<float>(mouse_pos.x), static_cast<float>(mouse_pos.y)});
-
-	return foo;
-}
-bool mouseDown(Sprite sprite){
-	return mouseHover(sprite) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
-}
 struct glyphButton
 {
 	//Variables
@@ -235,8 +391,34 @@ struct glyphButton
 	Sprite spriteState;
 
 	short state = 0;
-	
+
 	//functions
+	
+	/**
+	* Returns true if the mouse cursor hovers over the button
+	* @param sprite The sprite that the cursor hovers over.
+	*/
+	bool mouseHover(Sprite sprite)
+	{
+		sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
+
+		bool foo = sprite.getGlobalBounds().contains({static_cast<float>(mouse_pos.x), static_cast<float>(mouse_pos.y)});
+
+		return foo;
+	}
+	/**
+	* Returns true if the left mouse button is pressed down while the cursor is in hover state
+	* @param sprite The sprite that the cursor hovers over.
+	*/
+	bool mouseDown(Sprite sprite){
+		return mouseHover(sprite) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
+	}
+
+	/**
+	* Renders a glyph button on the screen
+	* @param pos The pos for the button to be at.
+	* @param id The id of the button. Helps with loading the glyphs
+	*/
 	void create(sf::Vector2f pos, string id)
 	{
 		buttonPosition = pos;
@@ -273,6 +455,10 @@ struct glyphButton
 		window.draw(spriteState);
 	}
 };
+/**
+* Returns true if a glyph button is clicked
+* @param btn The button to be clicked
+*/
 bool clicked(glyphButton btn)
 {
 	if(btn.state == 2)
@@ -292,8 +478,11 @@ struct gif
 	
 	Vector2i frameSize {0,0};
 
-	
-	void animate(string directory, bool repeat = false)
+	/**
+	* starts animating a gif
+	* @param directory The directory of the sprite sheet
+	*/
+	void animate(string directory)
 	{
 		textureSheet.setSmooth(true);
 		textureSheet.loadFromFile(directory);
@@ -302,15 +491,15 @@ struct gif
 		spriteFrame.setTexture(textureSheet);
 		spriteFrame.setTextureRect(gifTracer);
 
-		if(gifTracer.left == frameSize.y * (numFrames - 1))
-		{
+		gifTracer.width = frameSize.x;
+		gifTracer.height = frameSize.y;
+		
+		int lastFrameLeft = frameSize.y * (numFrames - 1);
+
+		if(gifTracer.left == lastFrameLeft)
 			gifTracer.left = 0;
-		}
 		else
-		{
 			gifTracer.left += frameSize.y;
-			sleep(milliseconds(30));
-		}
 
 		
 		window.draw(spriteFrame);
@@ -342,7 +531,10 @@ struct pauseScreen
 	
 	glyphButton btnResume;
 
-	
+	/**
+	* renders a pause menu on the screen
+	* @param dueToInactivity determines whether the pause was due to inactivity or not
+	*/
 	void create(bool dueToInactivity)
 	{
 		float margin = 20.0f;
@@ -379,7 +571,7 @@ struct pauseScreen
 		
 		window.draw(shade);
 		window.draw(spriteContent);
-		dinoGif.animate("Assets/Sprite_sheets/dino_dance.png", true);
+		dinoGif.animate("Assets/Sprite_sheets/dino_dance.png");
 		window.draw(text);
 		FloatRect frameContent = spriteContent.getGlobalBounds();
 		if(!dueToInactivity)
@@ -387,27 +579,57 @@ struct pauseScreen
 	}
 };
 
-
 #pragma region GLOBAL VARIABLES
-
-const int MOVE_SLEEP_DURATION = 175;
-
-int totalMoves = 0; //total moves taken in the game
-int correctMoves = 0; //correct moves taken in the game
+#pragma region Game data
+int completedCells = 41; //Number of cells filled with correct (user wins when 81)
 int falseMoves = 0; //false moves taken, (game will be over after 3 false moves)
+int hints = 0;
+string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
+string gameTime;
+#pragma endregion
+
+const int MOVE_SLEEP_DURATION = 150;
+
+Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(195,20,50);
 
 //Used to trace the pen in order to move it using the keyboard arrows and knowing the current position 
 Vector2i penTracer = { 0,0 };
 
-int completedCells = 41;
-
 bool pausedDueToInactivity = false;
 bool paused = false;
-
-string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
-
 #pragma endregion
 
+void createPenInstance(RectangleShape &pen, short type)
+{
+	RectangleShape penObj({35,35});
+
+	penObj.setOutlineThickness(3);
+
+	Color fillColor, outlineColor;
+	switch (type)
+	{
+	case 0:
+	fillColor = Color::Transparent;
+	outlineColor = Color::White;
+		break;;
+	case 1:
+	fillColor = Color::Transparent;
+	outlineColor = Color(255,255,255,90);
+		break;
+	case 2:
+	fillColor = Color(0,218,255, 50);
+	outlineColor = Color(0,218,255, 150);
+		break;
+	default:
+		fillColor = Color::Green;
+		outlineColor = Color::Blue;
+
+	}
+	penObj.setFillColor(fillColor);
+	penObj.setOutlineColor(outlineColor);
+	
+	pen = penObj;
+}
 
 /**
 * Evaluates if a move is correct or not comparing to the completed sudoku template
@@ -465,7 +687,19 @@ void undo(Text source[9][9], gameMove move)
 }
 
 /**
-* Plays a sound from a sound buffer then awaits for a specific time
+* gives a hint to the user by solving one cell at a time
+*
+* @param source The reference grid which we are going to solve a cell from
+* @param reference Our solved reference
+* @param index the index of the cell
+*/
+void hint(Text source[9][9], int reference[9][9], Vector2i index)
+{
+	source[index.x][index.y].setString(to_string(reference[index.x][index.y]));
+}
+
+/**
+* Plays a sound from a sound buffer then awaits for a specific period
 *
 * @param name The name of the audio file
 * @param sleepDuration the duration to be awaited
@@ -491,24 +725,30 @@ void playSound(string name, Time sleepDuration)
 */
 void updateText(Text& textObj, string initialString, string newData)
 {
-	string str = initialString + newData;
-	textObj.setString(str);
+	textObj.setString(initialString + newData);
 }
 
+/**
+* Pauses the sudoku game
+*
+* @param dueToInactivity Indicates whether the pause was due to inactivity or not
+*/
 void pause(bool dueToInactivity)
 {
-	timer.Pause();
+	timer.pause();
 	paused = true;
 	pausedDueToInactivity = dueToInactivity;
 }
 
+/**
+* Resumes the sudoku game
+*/
 void resume()
 {
-	timer.Resume();
+	timer.resume();
 	paused = false;
 	pausedDueToInactivity = false;
 }
-
 
 int main()
 {
@@ -538,16 +778,17 @@ int main()
 		{1,2,3,4,5,6,7,8,9}
 	};
 
+	
 #pragma region Images
 	Texture textureBackground;
-	textureBackground.loadFromFile("Assets/Images/Background9.png");
+	textureBackground.loadFromFile("Assets/Images/foo.png");
 	Sprite spriteBackground = Sprite(textureBackground);
 	
 	Texture textureGrid;
 	textureGrid.loadFromFile("Assets/Images/grid.png");
 	Sprite spriteGrid(textureGrid);
 	spriteGrid.setPosition({25, 120});
-#pragma endregion
+#pragma endregion,
 
 #pragma region Top glyph buttons
 	string btnIds[5] = {"menu", "hint", "pause", "undo", "settings"};
@@ -585,20 +826,16 @@ int main()
 #pragma endregion
 
 #pragma region Sudoku Pens
-	RectangleShape pen({ 35,35 });
-	RectangleShape shadowPen({ 35, 35 });
+	RectangleShape pen;
+	RectangleShape shadowPen;
 
 	//Styling
-		//Main pen
-	pen.setFillColor(Color::Transparent);
-	pen.setOutlineColor(Color::White);
-	pen.setOutlineThickness(3);
+	/////////Main pen
+	createPenInstance(pen, 0);
 	
-		//Shadow pen
+	/////////Shadow pen
 	bool drawShadowPen = false;
-	shadowPen.setFillColor(Color::Transparent);
-	shadowPen.setOutlineColor(Color(255,255,255,90));
-	shadowPen.setOutlineThickness(3);
+	createPenInstance(shadowPen, 1);
 #pragma endregion
 
 
@@ -614,13 +851,14 @@ int main()
 			unsolvedTemplateText[i][j].setString(to_string(num));
 			//setting font (Google Sans)
 			unsolvedTemplateText[i][j].setFont(googleBlack);
+
 			//setting position
 			positionSystem posNumber;
 			posNumber.margin = posNumber.NUMBERS_MARGIN;
-			posNumber.factor = { 50,50 };
-			posNumber.index = { i,j };
-			Vector2f pos = posNumber.generate_position();
-
+			posNumber.factor = {50, 50};
+			posNumber.index = {j, i};
+			
+			Vector2f pos = posNumber.generatePosition();
 			unsolvedTemplateText[i][j].setPosition(pos);
 		}
 	}
@@ -657,7 +895,8 @@ int main()
 
 		//updating the time text unless the game is paused
 		if (!paused)
-			updateText(timeText, "TIME: ", timer.getElapsedTime());
+			gameTime = timer.getElapsedTime();
+			updateText(timeText, "TIME: ", gameTime);
 #pragma endregion
 
 
@@ -670,12 +909,13 @@ int main()
 		//Stop all kinds of input when the game is paused
 		if (!paused)
 		{
-#pragma region KEYBOARD INPUT
+#pragma region KEYBOARD/MOUSE INPUT
 
 			/********************************************************
 			 *****HANDLING ARROWS INPUT IN ORDER TO MOVE THE PEN*****
 			 *******************************************************/
 #pragma region PEN MOVING INPUT
+			////////////Keyboard
 			bool rightPressed = Keyboard::isKeyPressed(Keyboard::Right) || Keyboard::isKeyPressed(Keyboard::D),
 				leftPressed = Keyboard::isKeyPressed(Keyboard::Left) || Keyboard::isKeyPressed(Keyboard::A),
 				upPressed = Keyboard::isKeyPressed(Keyboard::Up) || Keyboard::isKeyPressed(Keyboard::W),
@@ -762,8 +1002,40 @@ int main()
 			posPen.margin = posPen.PEN_MARGIN;
 			posPen.factor = { 50,50 };
 			posPen.index = { penTracer.x, penTracer.y };
-			Vector2f pos = posPen.generate_position();
+			Vector2f pos = posPen.generatePosition();
 			pen.setPosition(pos);
+
+			////////////Mouse
+			Vector2i mousePos = Mouse::getPosition(window);
+			if (spriteGrid.getGlobalBounds().contains(mousePos.x, mousePos.y))
+			{
+				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
+
+				system("CLS");
+				cout << index.y << ',' << index.x << endl;
+
+				positionSystem shadowPenPos;
+				shadowPenPos.margin = shadowPenPos.PEN_MARGIN;
+				shadowPenPos.factor = { 50,50 };
+				shadowPenPos.index = index;
+				
+				shadowPen.setPosition(shadowPenPos.generatePosition());
+
+				drawShadowPen = true;
+
+				if (Mouse::isButtonPressed(Mouse::Left))
+				{
+					penTracer = index;
+					pen.setPosition(shadowPenPos.generatePosition());
+				}
+			}
+			else //Hide the shadow pen if the cursor is out of grid boundaries
+			{
+				drawShadowPen = false;
+			}
+
+			
+			
 #pragma endregion
 
 			/********************************************************
@@ -795,28 +1067,26 @@ int main()
 
 			if (numPressed != 0) //A number between (1-9) entered
 			{
-				Vector2i index = penTracer;
 
-				if (modifiableCell(index, solvedTemplate, unsolvedTemplate))
+				if (modifiableCell({penTracer.y, penTracer.x}, solvedTemplate, unsolvedTemplate))
 				{
-					unsolvedTemplateText[index.x][index.y].setString(to_string(numPressed));
-					unsolvedTemplateText[index.x][index.y].setFont(googleRegular);
+					unsolvedTemplateText[penTracer.y][penTracer.x].setString(to_string(numPressed));
+					unsolvedTemplateText[penTracer.y][penTracer.x].setFont(googleRegular);
 
 					//coloring the number to indicate either correct or incorrect move
-					if (correctMove(index, solvedTemplate, numPressed))
+					if (correctMove({penTracer.y, penTracer.x}, solvedTemplate, numPressed))
 					{
-						unsolvedTemplateText[index.x][index.y].setFillColor(Color(0, 0, 180));
+						unsolvedTemplateText[penTracer.y][penTracer.x].setFillColor(correctMoveColor);
 						completedCells++;
 					}
 					else
 					{
-						unsolvedTemplateText[index.x][index.y].setFillColor(Color(255, 0, 0));
+						unsolvedTemplateText[penTracer.y][penTracer.x].setFillColor(falseMoveColor);
 						falseMoves++;
 					}
 
 					//record the move in case the user wants to undo
-					lastMove.index = index;
-					lastMove.number = numPressed;
+					lastMove = gameMove{{penTracer.y, penTracer.x}, numPressed};
 
 					//playing sound
 					playSound("fill.wav", milliseconds(350));
@@ -832,9 +1102,9 @@ int main()
 			if (Keyboard::isKeyPressed(Keyboard::Delete)) //user pressed delete in order to remove a specific move
 			{
 				//Doesn't delete the predefined numbers
-				if (modifiableCell(penTracer, solvedTemplate, unsolvedTemplate))
+				if (modifiableCell({penTracer.y, penTracer.x}, solvedTemplate, unsolvedTemplate))
 				{
-					remove(unsolvedTemplateText, penTracer);
+					remove(unsolvedTemplateText, {penTracer.y, penTracer.x});
 
 					//plays the undo sound
 					playSound("undo.wav", milliseconds(250));
@@ -865,50 +1135,22 @@ int main()
 #pragma endregion
 
 
-#pragma region MOUSE INPUT
-			Vector2i mousePos = Mouse::getPosition(window);
-			if (spriteGrid.getGlobalBounds().contains(mousePos.x, mousePos.y))
-			{
-				system("CLS");
-				
-				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
-
-				cout << index.x << ',' << index.y << endl;
-
-				positionSystem shadowPenPos;
-				shadowPenPos.margin = shadowPenPos.PEN_MARGIN;
-				shadowPenPos.factor = { 50,50 };
-				shadowPenPos.index = index;
-				
-				shadowPen.setPosition(shadowPenPos.generate_position());
-
-				drawShadowPen = true;
-
-				if (Mouse::isButtonPressed(Mouse::Left))
-				{
-					penTracer = index;
-					pen.setPosition(shadowPenPos.generate_position());
-				}
-			}
-			else
-			{
-				drawShadowPen = false;
-			}
-
-			
-#pragma endregion
-
 #pragma region Buttons handling
-		if(clicked(buttons[2]))
+		if(clicked(buttons[1])) //Hint
+		{
+			/*hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
+			completedCells++;
+			cout << completedCells << endl;*/
+		}
+		if(clicked(buttons[2])) //Pause
 		{
 			pause(false);
 		}
-		if(clicked(buttons[3]))
+		if(clicked(buttons[3])) //Undo
 		{
 			undo(unsolvedTemplateText, lastMove);
 		}
 #pragma endregion
-
 		}
 
 
@@ -920,32 +1162,10 @@ int main()
 		 //clearing the window
 		window.clear();
 
-
+		//Background 
 		window.draw(spriteBackground);		
+		//9x9 grid
 		window.draw(spriteGrid);
-
-		//Pens
-		window.draw(pen);
-		if(drawShadowPen)
-			window.draw(shadowPen);
-
-		
-		//Numbers
-		for (int i = 0; i < 9; i++)
-		{
-			for (int j = 0; j < 9; j++)
-			{
-				if (unsolvedTemplateText[j][i].getString() == "0")
-					continue;
-				window.draw(unsolvedTemplateText[j][i]);
-			}
-		}
-
-		//texts
-		window.draw(timeText);
-		window.draw(falseMovesText);
-		window.draw(difficultyText);
-
 
 		//Top glyph buttons positioning and drawing
 		positionSystem posButtons;
@@ -960,10 +1180,35 @@ int main()
 				posButtons.margin.x += 50;
 			}
 
-			buttons[i].create(posButtons.generate_position(), btnIds[i]);
+			buttons[i].create(posButtons.generatePosition(), btnIds[i]);
 		}
 		
-		//Draw an overlay shader to indicate a paused game
+		//Drawing Numbers
+		for(int i = 0; i < 9; i++)
+		{
+			for(int j = 0; j < 9; j++)
+			{
+				if (unsolvedTemplateText[j][i].getString() == "0")
+					continue;
+				window.draw(unsolvedTemplateText[j][i]);
+			}
+		}
+
+		//Primary Pen and shadow pen
+		window.draw(pen);
+		if(drawShadowPen)
+			window.draw(shadowPen);
+
+		//Highlighting
+		highlightingSystem sys;
+		sys.highlight({penTracer.x, penTracer.y});
+		
+		//Labels
+		window.draw(timeText);
+		window.draw(falseMovesText);
+		window.draw(difficultyText);
+		
+		//Pause menu to indicate a paused game
 		if (paused)
 		{
 			pauseScreen pauseScreen;
@@ -976,9 +1221,8 @@ int main()
 		
 		window.display();
 
-#pragma endregion
+#pragma endregion 
 	}
-
 
 	return 0;
 }
