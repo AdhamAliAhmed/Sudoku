@@ -10,6 +10,10 @@ struct gif;
 using namespace sf;
 using namespace std;
 
+#pragma region functions decleration
+#pragma endregion
+
+
 const int WIDTH = 500, HEIGHT = 650;
 
 int theme = 1;
@@ -466,18 +470,20 @@ bool clicked(glyphButton btn)
 	return false;
 }
 
-IntRect gifTracer{0,0,200,200};
 struct gif
 {
 	Texture textureSheet;
 	Sprite spriteFrame;
 
 	Vector2f gifPosition;
-	
+
 	int numFrames = 0;
 	
 	Vector2i frameSize {0,0};
 
+	IntRect gifTracer{0,0,0,0};
+
+	
 	/**
 	* starts animating a gif
 	* @param directory The directory of the sprite sheet
@@ -509,7 +515,6 @@ Vector2f center(gif gif)
 {
 	return {gif.frameSize.x / 2.0f, gif.frameSize.y / 2.0f};
 }
-
 
 struct pauseScreen
 {
@@ -581,14 +586,14 @@ struct pauseScreen
 
 #pragma region GLOBAL VARIABLES
 #pragma region Game data
-int completedCells = 41; //Number of cells filled with correct (user wins when 81)
+int completedCells = 0; //Number of cells filled with correct (user wins when 81)
 int falseMoves = 0; //false moves taken, (game will be over after 3 false moves)
 int hints = 0;
 string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
 string gameTime;
 #pragma endregion
 
-const int MOVE_SLEEP_DURATION = 150;
+const int MOVE_SLEEP_DURATION = 150, TAPPING_SLEEP_DURATION = 200;
 
 Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(195,20,50);
 
@@ -663,18 +668,6 @@ bool modifiableCell(Vector2i index, int solvedSource[9][9], int unsolvedSource[9
 }
 
 /**
-* Removes an entry entered by the used
-*
-* @param source The reference grid in which we are going to remove the entry
-* @param index The index of the entry
-*
-*/
-void remove(Text source[9][9], Vector2i index)
-{
-	source[index.x][index.y].setString("0");
-}
-
-/**
 * Undo the last move taken
 *
 * @param source The reference grid in which we are going to remove the last move
@@ -683,7 +676,7 @@ void remove(Text source[9][9], Vector2i index)
 */
 void undo(Text source[9][9], gameMove move)
 {
-	remove(source, move.index);
+	source[move.index.x][move.index.y].setString("0");
 }
 
 /**
@@ -695,26 +688,12 @@ void undo(Text source[9][9], gameMove move)
 */
 void hint(Text source[9][9], int reference[9][9], Vector2i index)
 {
-	source[index.x][index.y].setString(to_string(reference[index.x][index.y]));
+	if(source[index.x][index.y].getString() == "0")
+	{
+		source[index.x][index.y].setString(to_string(reference[index.x][index.y]));
+	}
 }
 
-/**
-* Plays a sound from a sound buffer then awaits for a specific period
-*
-* @param name The name of the audio file
-* @param sleepDuration the duration to be awaited
-*/
-void playSound(string name, Time sleepDuration)
-{
-	string directory = "Assets/Audio/SoundEffects/" + name;
-	SoundBuffer buffer;
-	buffer.loadFromFile(directory);
-
-	Sound sound(buffer);
-	sound.play();
-
-	sleep(sleepDuration);
-}
 
 /**
 * Updates a text object with a specific string
@@ -838,10 +817,15 @@ int main()
 	createPenInstance(shadowPen, 1);
 #pragma endregion
 
+#pragma region Pause Screen
+	pauseScreen pauseScreen;
+#pragma endregion
 
-	/************************************************************************
-	*******COPYING THE UNSOLVED ARRAY IN ORDER TO DRAW IT EACH FRAME*********
-	*************************************************************************/
+
+	
+	/******************************************************************************************
+	*******COPYING THE CONTENT OF THE INTEGER UNSOLVED ARRAY TO THE TEXT UNSOLVED ARRAY********
+	******************************************************************************************/
 	for (int i = 0; i < 9; i++)
 	{
 		for (int j = 0; j < 9; j++)
@@ -849,7 +833,6 @@ int main()
 			int num = unsolvedTemplate[i][j];
 			//setting string
 			unsolvedTemplateText[i][j].setString(to_string(num));
-			//setting font (Google Sans)
 			unsolvedTemplateText[i][j].setFont(googleBlack);
 
 			//setting position
@@ -903,7 +886,6 @@ int main()
 		/************************************************
 		 ****************KEYBOARD INPUT******************
 		 ***********************************************/
-
 
 		
 		//Stop all kinds of input when the game is paused
@@ -992,9 +974,6 @@ int main()
 						penTracer.y++;
 					}
 				}
-
-				//sound playing when moving the pen
-				playSound("move.wav", milliseconds(MOVE_SLEEP_DURATION));
 			}
 
 			//Setting pen position
@@ -1011,8 +990,8 @@ int main()
 			{
 				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
 
-				system("CLS");
-				cout << index.y << ',' << index.x << endl;
+				//system("CLS");
+				//cout << index.y << ',' << index.x << endl;
 
 				positionSystem shadowPenPos;
 				shadowPenPos.margin = shadowPenPos.PEN_MARGIN;
@@ -1063,7 +1042,7 @@ int main()
 			if (Keyboard::isKeyPressed(Keyboard::Num9) || Keyboard::isKeyPressed(Keyboard::Numpad9))
 				numPressed = 9;
 
-			//The actual writing and playing sound
+			//The actual writing
 
 			if (numPressed != 0) //A number between (1-9) entered
 			{
@@ -1077,7 +1056,6 @@ int main()
 					if (correctMove({penTracer.y, penTracer.x}, solvedTemplate, numPressed))
 					{
 						unsolvedTemplateText[penTracer.y][penTracer.x].setFillColor(correctMoveColor);
-						completedCells++;
 					}
 					else
 					{
@@ -1087,31 +1065,11 @@ int main()
 
 					//record the move in case the user wants to undo
 					lastMove = gameMove{{penTracer.y, penTracer.x}, numPressed};
-
-					//playing sound
-					playSound("fill.wav", milliseconds(350));
 				}
 			}
 #pragma endregion
 
 
-			/********************************************************
-			 ********************DELETING A MOVE*********************
-			 *******************************************************/
-#pragma region 4-DELETE
-			if (Keyboard::isKeyPressed(Keyboard::Delete)) //user pressed delete in order to remove a specific move
-			{
-				//Doesn't delete the predefined numbers
-				if (modifiableCell({penTracer.y, penTracer.x}, solvedTemplate, unsolvedTemplate))
-				{
-					remove(unsolvedTemplateText, {penTracer.y, penTracer.x});
-
-					//plays the undo sound
-					playSound("undo.wav", milliseconds(250));
-					//decrease completed cells 
-				}
-			}
-#pragma endregion
 			/********************************************************
 			 ********************UN-DOING A MOVE*********************
 			 *******************************************************/
@@ -1122,12 +1080,6 @@ int main()
 				if (modifiableCell(lastMove.index, solvedTemplate, unsolvedTemplate))
 				{
 					undo(unsolvedTemplateText, lastMove);
-
-					//plays the undo sound
-					playSound("undo.wav", milliseconds(250));
-
-
-					//decrease completed cells 
 				}
 			}
 #pragma endregion
@@ -1138,9 +1090,8 @@ int main()
 #pragma region Buttons handling
 		if(clicked(buttons[1])) //Hint
 		{
-			/*hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
-			completedCells++;
-			cout << completedCells << endl;*/
+			hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
+			cout << completedCells << endl;
 		}
 		if(clicked(buttons[2])) //Pause
 		{
@@ -1151,8 +1102,27 @@ int main()
 			undo(unsolvedTemplateText, lastMove);
 		}
 #pragma endregion
-		}
 
+#pragma region calculating completed cells
+		completedCells = 0;
+		for (int i  = 0; i < 9; i++)
+		{
+			for (int j  = 0; j < 9; j++)
+			{
+				string numStr = unsolvedTemplateText[i][j].getString();
+				int num = stoi(numStr);
+				
+				if(num != 0)
+				{
+					if(correctMove({i,j}, solvedTemplate, num))
+						completedCells++;
+				}
+			}	
+		}
+			cout << completedCells << endl;
+#pragma endregion
+
+		}
 
 
 		/********************************************************
@@ -1211,7 +1181,6 @@ int main()
 		//Pause menu to indicate a paused game
 		if (paused)
 		{
-			pauseScreen pauseScreen;
 			pauseScreen.textFont = googleRegular;
 			pauseScreen.create(pausedDueToInactivity);
 
