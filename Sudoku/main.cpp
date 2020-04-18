@@ -1,7 +1,10 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/Audio.hpp>
 #include <iostream>
+#include <fstream>
 #include<string>
+#include <cstdlib>
+#include <windows.h>
 
 struct glyphButton;
 struct button;
@@ -19,6 +22,8 @@ const int WIDTH = 500, HEIGHT = 650;
 int theme = 1;
 VideoMode videoMode(WIDTH, HEIGHT);
 RenderWindow window(videoMode, "SUDOKU", Style::Close);
+
+#pragma region structs
 
 /**
 * Time formatting and manipulation
@@ -94,7 +99,7 @@ struct timer {
 */
 struct gameMove
 {
-	Vector2i index;
+	Vector2i index = {-1, -1};
 	int number = 0;
 } lastMove;
 
@@ -122,12 +127,29 @@ struct positionSystem
 		position = {x, y};
 		return position;
 	}
+
+
+	/**
+	* Generates a position on the screen using three factors: margin, factor and index. Made specifically for pens
+	*/
+	Vector2f generatePenPosition(Vector2i index)
+	{
+		margin = PEN_MARGIN;
+		factor = {50,50};
+		
+		float x = margin.x + (index.x * factor.x),
+			y = margin.y + (index.y * factor.y);
+		
+		position = {x, y};
+		return position;
+	}
 };
 
 /**
-* Creates a pen instance with it default properties
-* @param pen The pen to be used.
-* @param type The type of the pen, either primary pen, shadow pen or a highlighter.
+* produces a sudoku pen with some special characteristics
+*
+* @param pen The sudoku pen.
+* @param type The type of the pen.
 */
 void createPenInstance(RectangleShape &pen, short type);
 
@@ -386,12 +408,12 @@ Vector2f center(gif gif);
 struct glyphButton
 {
 	//Variables
-	Vector2f buttonSize = { 50, 50 },
+	Vector2f buttonSize = { 0, 0 },
 	buttonPosition = { 0,0 };
 	
 	Texture textureSheet;
 	
-	IntRect tracer{0,0, 50,50};
+	IntRect tracer;
 	Sprite spriteState;
 
 	short state = 0;
@@ -406,9 +428,9 @@ struct glyphButton
 	{
 		sf::Vector2i mouse_pos = sf::Mouse::getPosition(window); //mouse position according to the window
 
-		bool foo = sprite.getGlobalBounds().contains({static_cast<float>(mouse_pos.x), static_cast<float>(mouse_pos.y)});
+		bool inBounds = sprite.getGlobalBounds().contains({static_cast<float>(mouse_pos.x), static_cast<float>(mouse_pos.y)});
 
-		return foo;
+		return inBounds;
 	}
 	/**
 	* Returns true if the left mouse button is pressed down while the cursor is in hover state
@@ -423,12 +445,14 @@ struct glyphButton
 	* @param pos The pos for the button to be at.
 	* @param id The id of the button. Helps with loading the glyphs
 	*/
-	void create(sf::Vector2f pos, string id)
+	void create(sf::Vector2f pos, Vector2f size, string directory)
 	{
 		buttonPosition = pos;
 		spriteState.setPosition(buttonPosition);
+
+		buttonSize = size;
+		tracer = {0,0, static_cast<int>(buttonSize.x), static_cast<int>(buttonSize.y)};
 		
-		string directory = "Assets/buttons/" + id + ".png";
 		textureSheet.setSmooth(true);
 		textureSheet.loadFromFile(directory);
 
@@ -436,13 +460,13 @@ struct glyphButton
 		
 		if(mouseHover(spriteState))
 		{
-			tracer.left = 50;
+			tracer.left = buttonSize.x;
 
 			state = 1;
 			
 			if(mouseDown(spriteState))
 			{
-				tracer.left = 100;
+				tracer.left = buttonSize.x * 2;
 
 				state = 2;
 			}
@@ -516,7 +540,12 @@ Vector2f center(gif gif)
 	return {gif.frameSize.x / 2.0f, gif.frameSize.y / 2.0f};
 }
 
-struct pauseScreen
+void navigateToUrl(string url)
+{
+	ShellExecute(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
+}
+
+struct pauseIndicationScene
 {
 	bool dueToInactivity = false;
 	
@@ -537,7 +566,7 @@ struct pauseScreen
 	glyphButton btnResume;
 
 	/**
-	* renders a pause menu on the screen
+	* renders a pause indication scene
 	* @param dueToInactivity determines whether the pause was due to inactivity or not
 	*/
 	void create(bool dueToInactivity)
@@ -550,7 +579,7 @@ struct pauseScreen
 		shade.setFillColor(shadeColor);
 		
 		//Content
-		textureContent.loadFromFile("Assets/Menus/pause-content.png");
+		textureContent.loadFromFile("Assets/scenes-content/pause-indication-content.png");
 		spriteContent.setTexture(textureContent);
 		spriteContent.setOrigin(center(spriteContent));
 		spriteContent.setPosition(center(window));
@@ -576,13 +605,119 @@ struct pauseScreen
 		
 		window.draw(shade);
 		window.draw(spriteContent);
-		dinoGif.animate("Assets/Sprite_sheets/dino_dance.png");
+		dinoGif.animate("Assets/sprite_sheets/dino_dance.png");
 		window.draw(text);
 		FloatRect frameContent = spriteContent.getGlobalBounds();
 		if(!dueToInactivity)
-			btnResume.create({center(window).x, frameContent.top + 320.0f}, "resume");
+			btnResume.create({center(window).x, frameContent.top + 320.0f}, {50,50} ,"Assets/buttons/resume.png");
 	}
-};
+} pauseScene;
+
+struct MainMenuScene
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnNewGame, btnHowToPlay, btnStatistics, btnSettings, btnCredits; 
+
+	/**
+	* renders the main menu scene
+	*/
+	void create()
+	{
+		//content
+		textureContent.loadFromFile("Assets/scenes-content/main-menu-content.png");
+		spriteContent.setTexture(textureContent);
+
+		//buttons
+		positionSystem posButtons;
+		posButtons.margin = { 26, 0};
+		posButtons.factor = { 300,35 };
+
+		window.draw(spriteContent);
+
+		string directory = "Assets/buttons/main_menu/";
+		Vector2f buttonSize = {300,35};
+		float posX = 26.0f;
+		
+		btnNewGame.create({posX, 240}, buttonSize, directory+"new_game.png");
+		btnHowToPlay.create({posX, 275}, buttonSize,  directory+"how_to_play.png");
+		btnStatistics.create({posX, 310}, buttonSize, directory+"statistics.png");
+		btnSettings.create({posX, 345}, buttonSize, directory + "settings.png");
+		btnCredits.create({posX, 380}, buttonSize, directory + "credits.png");
+	}
+	
+}mainMenuScene;
+
+struct newGameScene
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnEasy, btnMedium, btnHard, btnExpert;
+
+	/**
+	* renders the main menu scene
+	*/
+	void create()
+	{
+		//content
+		textureContent.loadFromFile("Assets/scenes-content/new_game_content.png");
+		spriteContent.setTexture(textureContent);
+
+		//buttons
+		Vector2f buttonSize = {265,35};
+		float posX = 26.0f;
+		
+		positionSystem posButtons;
+		posButtons.margin = { posX, 0};
+		posButtons.factor = buttonSize;
+
+		window.draw(spriteContent);
+
+		string directory = "Assets/buttons/new_game/";
+		
+		btnEasy.create({posX, 240}, buttonSize, directory+"easy.png");
+		btnMedium.create({posX, 275}, buttonSize,  directory+"medium.png");
+		btnHard.create({posX, 310}, buttonSize, directory+"hard.png");
+		btnExpert.create({posX, 345}, buttonSize, directory + "expert.png");
+	}
+}newGameScene;
+
+struct creditsScene
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnGithub, btnWebsite, btnBack;
+
+	/**
+	* renders the main menu scene
+	*/
+	void create()
+	{
+		//content
+		textureContent.loadFromFile("Assets/scenes-content/credits_content.png");
+		spriteContent.setTexture(textureContent);
+
+		//buttons
+		Vector2f buttonSize = {64,64};
+		float posY = 388.0f;
+		
+		positionSystem posButtons;
+		posButtons.factor = buttonSize;
+
+		window.draw(spriteContent);
+
+		string directory = "Assets/buttons/credits/";
+		
+		btnWebsite.create({175, posY}, buttonSize, directory+"website.png");
+		btnGithub.create({261, posY}, buttonSize,  directory+"github.png");
+		btnBack.create({368, 595}, {112,35}, directory+"back.png");
+	}
+} creditsScene;
+
+#pragma endregion 
 
 #pragma region GLOBAL VARIABLES
 #pragma region Game data
@@ -604,6 +739,12 @@ bool pausedDueToInactivity = false;
 bool paused = false;
 #pragma endregion
 
+/**
+* produces a sudoku pen with some special characteristics
+*
+* @param pen The sudoku pen.
+* @param type The type of the pen.
+*/
 void createPenInstance(RectangleShape &pen, short type)
 {
 	RectangleShape penObj({35,35});
@@ -676,7 +817,10 @@ bool modifiableCell(Vector2i index, int solvedSource[9][9], int unsolvedSource[9
 */
 void undo(Text source[9][9], gameMove move)
 {
-	source[move.index.x][move.index.y].setString("0");
+	bool moveInBounds = (move.index.x >= 0 && move.index.x <= 8) & (move.index.y >= 0 && move.index.y <= 8); 
+
+	if(moveInBounds)
+		source[move.index.x][move.index.y].setString("0");
 }
 
 /**
@@ -693,7 +837,6 @@ void hint(Text source[9][9], int reference[9][9], Vector2i index)
 		source[index.x][index.y].setString(to_string(reference[index.x][index.y]));
 	}
 }
-
 
 /**
 * Updates a text object with a specific string
@@ -729,38 +872,100 @@ void resume()
 	pausedDueToInactivity = false;
 }
 
+/**
+* Returns the number pressed on the keyboard between 1,9. If none is pressed 0 is returned
+*/
+int fetchPressedNumber()
+{
+	int numPressed = 0;
+	
+	if (Keyboard::isKeyPressed(Keyboard::Num1) || Keyboard::isKeyPressed(Keyboard::Numpad1))
+		numPressed = 1;
+	if (Keyboard::isKeyPressed(Keyboard::Num2) || Keyboard::isKeyPressed(Keyboard::Numpad2))
+		numPressed = 2;
+	if (Keyboard::isKeyPressed(Keyboard::Num3) || Keyboard::isKeyPressed(Keyboard::Numpad3))
+		numPressed = 3;
+	if (Keyboard::isKeyPressed(Keyboard::Num4) || Keyboard::isKeyPressed(Keyboard::Numpad4))
+		numPressed = 4;
+	if (Keyboard::isKeyPressed(Keyboard::Num5) || Keyboard::isKeyPressed(Keyboard::Numpad5))
+		numPressed = 5;
+	if (Keyboard::isKeyPressed(Keyboard::Num6) || Keyboard::isKeyPressed(Keyboard::Numpad6))
+		numPressed = 6;
+	if (Keyboard::isKeyPressed(Keyboard::Num7) || Keyboard::isKeyPressed(Keyboard::Numpad7))
+		numPressed = 7;
+	if (Keyboard::isKeyPressed(Keyboard::Num8) || Keyboard::isKeyPressed(Keyboard::Numpad8))
+		numPressed = 8;
+	if (Keyboard::isKeyPressed(Keyboard::Num9) || Keyboard::isKeyPressed(Keyboard::Numpad9))
+		numPressed = 9;
+
+	return numPressed;
+}
+
+/**
+* Returns a random number between 2 bounds
+* 
+* @param begin the left bound
+* @param end the right bound
+*/
+int getRandom(int begin, int end)
+{
+	srand(time(NULL));
+	return (rand() % end) + begin;
+}
+
+/**
+* Loads a sudoku template from an external file
+* 
+* @param host the integer array to host the template
+* @param directory the directory of the file
+*/
+void loadTemplate(int host[9][9], string directory)
+{
+	string templateStr;
+	
+	ifstream stream(directory);
+	if(stream.is_open())
+	{
+		int templateIndex = getRandom(0,49);
+
+		int pointerPos = (83* templateIndex);
+		stream.seekg(pointerPos);
+		
+		stream >> templateStr;	
+	}
+	else
+	{
+		cout << "A crucial file/s containing data cannot be located" << endl;
+		return;
+	}
+
+	for (int i = 0; i < 9; i++)
+	{
+		string row = templateStr.substr(9 * i, 9);
+		for (int j = 0; j < 9; j++)
+		{
+			int number = stoi(row.substr(j,1));
+			host[i][j] = number;
+		}
+	}
+}
+
+bool newGameClicked = false;
+bool creditsClicked = false;
+
 int main()
 {
-	int unsolvedTemplate[9][9] =
-	{
-		{1,0,3,0,0,0,0,0,0},
-		{0,2,0,4,5,6,0,8,9},
-		{1,2,3,4,0,6,7,0,0},
-		{1,0,3,0,0,0,0,8,9},
-		{0,2,3,4,5,6,0,0,0},
-		{1,2,0,4,0,6,0,8,9},
-		{0,2,3,0,5,0,7,0,0},
-		{1,0,0,0,5,0,0,0,9},
-		{1,2,3,0,0,6,0,8,0}
-	};
+	int unsolvedTemplate[9][9];
+	loadTemplate(unsolvedTemplate, "Assets/templates/unsolved/easy.txt");
 
-	int solvedTemplate[9][9] =
-	{
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9},
-		{1,2,3,4,5,6,7,8,9}
-	};
-
+	Text unsolvedTemplateText[9][9]; //Sudoku numbers to be drawn
 	
+	int solvedTemplate[9][9];
+	loadTemplate(solvedTemplate, "Assets/templates/solved/easy.txt");
+		
 #pragma region Images
 	Texture textureBackground;
-	textureBackground.loadFromFile("Assets/Images/foo.png");
+	textureBackground.loadFromFile("Assets/Images/background7.png");
 	Sprite spriteBackground = Sprite(textureBackground);
 	
 	Texture textureGrid;
@@ -774,21 +979,19 @@ int main()
 	glyphButton buttons[5];
 #pragma endregion
 	
-#pragma region Text
+#pragma region Labels
 	float textScale = 0.7f,
 		positionY = 580.0f;
 
 	//Fonts (Product Sans)
-	Font googleBlack, googleBold, googleRegular;
-	googleBlack.loadFromFile("Assets/Fonts/ProductSans-Black.ttf");
-	googleBold.loadFromFile("Assets/Fonts/ProductSans-Bold.ttf");
-	googleRegular.loadFromFile("Assets/Fonts/ProductSans-Regular.ttf");
-
-	Text unsolvedTemplateText[9][9]; //Sudoku numbers to be drawn
-
+	Font googleRegular, googleBlack, googleBold;
+	googleRegular.loadFromFile("Assets/fonts/ProductSans-Regular.ttf");
+	googleBold.loadFromFile("Assets/fonts/ProductSans-Bold.ttf");
+	googleBlack.loadFromFile("Assets/fonts/ProductSans-Black.ttf");
+	
 	Text difficultyText; //Game difficulty
 	difficultyText.setString("NORMAL");
-	difficultyText.setFont(googleRegular);
+	difficultyText.setFont(googleBold);
 	difficultyText.setScale({ textScale,textScale});
 	difficultyText.setPosition(25, positionY);
 
@@ -799,14 +1002,13 @@ int main()
 	falseMovesText.setPosition(160, positionY);
 
 	Text timeText; //Game time
-	timeText.setFont(googleRegular);
+	timeText.setFont(googleBold);
 	timeText.setScale({ textScale,textScale });
 	timeText.setPosition(380, positionY);
 #pragma endregion
 
 #pragma region Sudoku Pens
-	RectangleShape pen;
-	RectangleShape shadowPen;
+	RectangleShape pen, shadowPen;
 
 	//Styling
 	/////////Main pen
@@ -817,12 +1019,7 @@ int main()
 	createPenInstance(shadowPen, 1);
 #pragma endregion
 
-#pragma region Pause Screen
-	pauseScreen pauseScreen;
-#pragma endregion
 
-
-	
 	/******************************************************************************************
 	*******COPYING THE CONTENT OF THE INTEGER UNSOLVED ARRAY TO THE TEXT UNSOLVED ARRAY********
 	******************************************************************************************/
@@ -872,20 +1069,22 @@ int main()
 		/************************
 		*****UPDATING LABELS*****
 		*************************/
-#pragma region UPDATING Labels
+#pragma region Updating Labels
 
 		updateText(falseMovesText, "FALSE MOVES: ", to_string(falseMoves));
 
 		//updating the time text unless the game is paused
 		if (!paused)
+		{
 			gameTime = timer.getElapsedTime();
 			updateText(timeText, "TIME: ", gameTime);
+		}
 #pragma endregion
 
 
-		/************************************************
-		 ****************KEYBOARD INPUT******************
-		 ***********************************************/
+		/******************************************************
+		 ****************KEYBOARD/MOUSE INPUT******************
+		 ******************************************************/
 
 		
 		//Stop all kinds of input when the game is paused
@@ -974,15 +1173,9 @@ int main()
 						penTracer.y++;
 					}
 				}
-			}
 
-			//Setting pen position
-			positionSystem posPen;
-			posPen.margin = posPen.PEN_MARGIN;
-			posPen.factor = { 50,50 };
-			posPen.index = { penTracer.x, penTracer.y };
-			Vector2f pos = posPen.generatePosition();
-			pen.setPosition(pos);
+				sleep(milliseconds(MOVE_SLEEP_DURATION));
+			}
 
 			////////////Mouse
 			Vector2i mousePos = Mouse::getPosition(window);
@@ -990,61 +1183,35 @@ int main()
 			{
 				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
 
-				//system("CLS");
-				//cout << index.y << ',' << index.x << endl;
-
-				positionSystem shadowPenPos;
-				shadowPenPos.margin = shadowPenPos.PEN_MARGIN;
-				shadowPenPos.factor = { 50,50 };
-				shadowPenPos.index = index;
+				/*cout << index.y + 1 << ',' << index.x + 1 << endl;
+				system("CLS");*/
 				
-				shadowPen.setPosition(shadowPenPos.generatePosition());
+				positionSystem shadowPenPos;
+				shadowPen.setPosition(shadowPenPos.generatePenPosition(index));
 
 				drawShadowPen = true;
 
 				if (Mouse::isButtonPressed(Mouse::Left))
-				{
 					penTracer = index;
-					pen.setPosition(shadowPenPos.generatePosition());
-				}
 			}
 			else //Hide the shadow pen if the cursor is out of grid boundaries
 			{
 				drawShadowPen = false;
 			}
 
-			
-			
+			//Setting pen position
+			positionSystem posPen;
+			pen.setPosition(posPen.generatePenPosition(penTracer));
 #pragma endregion
 
 			/********************************************************
 			 ********HANDLING NUMBERS INPUT IN ORDER TO WRITE********
 			 *******************************************************/
 #pragma region NUMBERS INPUT
-			int numPressed = 0;
-
-			if (Keyboard::isKeyPressed(Keyboard::Num1) || Keyboard::isKeyPressed(Keyboard::Numpad1))
-				numPressed = 1;
-			if (Keyboard::isKeyPressed(Keyboard::Num2) || Keyboard::isKeyPressed(Keyboard::Numpad2))
-				numPressed = 2;
-			if (Keyboard::isKeyPressed(Keyboard::Num3) || Keyboard::isKeyPressed(Keyboard::Numpad3))
-				numPressed = 3;
-			if (Keyboard::isKeyPressed(Keyboard::Num4) || Keyboard::isKeyPressed(Keyboard::Numpad4))
-				numPressed = 4;
-			if (Keyboard::isKeyPressed(Keyboard::Num5) || Keyboard::isKeyPressed(Keyboard::Numpad5))
-				numPressed = 5;
-			if (Keyboard::isKeyPressed(Keyboard::Num6) || Keyboard::isKeyPressed(Keyboard::Numpad6))
-				numPressed = 6;
-			if (Keyboard::isKeyPressed(Keyboard::Num7) || Keyboard::isKeyPressed(Keyboard::Numpad7))
-				numPressed = 7;
-			if (Keyboard::isKeyPressed(Keyboard::Num8) || Keyboard::isKeyPressed(Keyboard::Numpad8))
-				numPressed = 8;
-			if (Keyboard::isKeyPressed(Keyboard::Num9) || Keyboard::isKeyPressed(Keyboard::Numpad9))
-				numPressed = 9;
+			int numPressed = fetchPressedNumber();
 
 			//The actual writing
-
-			if (numPressed != 0) //A number between (1-9) entered
+			if (numPressed != 0) //A number between (1-9) is pressed
 			{
 
 				if (modifiableCell({penTracer.y, penTracer.x}, solvedTemplate, unsolvedTemplate))
@@ -1054,16 +1221,11 @@ int main()
 
 					//coloring the number to indicate either correct or incorrect move
 					if (correctMove({penTracer.y, penTracer.x}, solvedTemplate, numPressed))
-					{
 						unsolvedTemplateText[penTracer.y][penTracer.x].setFillColor(correctMoveColor);
-					}
 					else
-					{
 						unsolvedTemplateText[penTracer.y][penTracer.x].setFillColor(falseMoveColor);
-						falseMoves++;
-					}
 
-					//record the move in case the user wants to undo
+					//recording the move in case the user wants to undo
 					lastMove = gameMove{{penTracer.y, penTracer.x}, numPressed};
 				}
 			}
@@ -1076,11 +1238,7 @@ int main()
 #pragma region 5-UNDO
 			if (Keyboard::isKeyPressed(Keyboard::Z) && event.key.control) //user pressed ctrl+z in order to undo the last move
 			{
-				//solves the issue of removing number at (0,0) at the beginning of the game
-				if (modifiableCell(lastMove.index, solvedTemplate, unsolvedTemplate))
-				{
-					undo(unsolvedTemplateText, lastMove);
-				}
+				undo(unsolvedTemplateText, lastMove);
 			}
 #pragma endregion
 			
@@ -1091,7 +1249,6 @@ int main()
 		if(clicked(buttons[1])) //Hint
 		{
 			hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
-			cout << completedCells << endl;
 		}
 		if(clicked(buttons[2])) //Pause
 		{
@@ -1103,23 +1260,29 @@ int main()
 		}
 #pragma endregion
 
-#pragma region calculating completed cells
-		completedCells = 0;
-		for (int i  = 0; i < 9; i++)
-		{
-			for (int j  = 0; j < 9; j++)
+#pragma region calculating completed cells and falseMoves
+			completedCells = 0;
+			int currentFalseMoves = 0;
+
+			for (int i  = 0; i < 9; i++)
 			{
-				string numStr = unsolvedTemplateText[i][j].getString();
-				int num = stoi(numStr);
-				
-				if(num != 0)
+				for (int j  = 0; j < 9; j++)
 				{
-					if(correctMove({i,j}, solvedTemplate, num))
-						completedCells++;
-				}
-			}	
-		}
-			cout << completedCells << endl;
+					string numStr = unsolvedTemplateText[i][j].getString();
+					int num = stoi(numStr);
+					
+					if(num != 0)
+					{
+						if(correctMove({i,j}, solvedTemplate, num))
+							completedCells++;
+						else
+							currentFalseMoves++;
+					}
+				}	
+			}
+
+			if(currentFalseMoves > falseMoves)
+				falseMoves = currentFalseMoves;
 #pragma endregion
 
 		}
@@ -1150,7 +1313,8 @@ int main()
 				posButtons.margin.x += 50;
 			}
 
-			buttons[i].create(posButtons.generatePosition(), btnIds[i]);
+			string directory = "Assets/buttons/" + btnIds[i] + ".png";
+			buttons[i].create(posButtons.generatePosition(), {50,50}, directory);
 		}
 		
 		//Drawing Numbers
@@ -1181,12 +1345,25 @@ int main()
 		//Pause menu to indicate a paused game
 		if (paused)
 		{
-			pauseScreen.textFont = googleRegular;
-			pauseScreen.create(pausedDueToInactivity);
+			pauseScene.textFont = googleRegular;
+			pauseScene.create(pausedDueToInactivity);
 
-			if(clicked(pauseScreen.btnResume))
+			if(clicked(pauseScene.btnResume))
 				resume();
 		}
+
+		if(clicked(mainMenuScene.btnNewGame))
+			newGameClicked = true;
+		if(clicked(mainMenuScene.btnCredits))
+			creditsClicked = true;
+		
+		if(!creditsClicked)
+			mainMenuScene.create();
+		else
+			creditsScene.create();
+		
+		/*glyphButton backBtn;
+		backBtn.create({5,5}, {64,64}, "github.png");*/
 		
 		window.display();
 
