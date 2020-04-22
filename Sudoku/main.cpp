@@ -13,15 +13,46 @@ struct gif;
 using namespace sf;
 using namespace std;
 
-#pragma region functions decleration
-#pragma endregion
-
 
 const int WIDTH = 500, HEIGHT = 650;
 
-int theme = 1;
 VideoMode videoMode(WIDTH, HEIGHT);
 RenderWindow window(videoMode, "SUDOKU", Style::Close);
+
+#pragma region GLOBAL VARIABLES
+#pragma region Game data
+int completedCells = 0;
+int falseMoves = 0;
+int hints = 0;
+string gameDifficulty;
+string gameTime;
+#pragma endregion
+
+#pragma region constants
+const int TEMPLATES_COUNT = 50;
+
+const int MOVE_SLEEP_DURATION = 150;
+
+#pragma region scenes ids
+const string MAIN_MENU_SCENE_ID = "main_menu";
+const string NEW_GAME_SCENE_ID = "new_game";
+const string MAIN_GAME_SCENE_ID = "main_game";
+const string CREDITS_SCENE_ID = "credits";
+#pragma endregion
+#pragma endregion
+
+string renderedSceneId = MAIN_MENU_SCENE_ID;
+bool gameInProgress = true;
+
+Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(195,20,50);
+
+//Used to trace the pen in order to move it using the keyboard arrows and knowing the current position 
+Vector2i penTracer = { 0,0 };
+
+bool paused = false; bool dueToFocusLoss = false;
+bool pauseMenuShown = false, pauseIndicationShown = false;
+
+#pragma endregion
 
 #pragma region structs
 
@@ -93,6 +124,40 @@ struct timer {
 	}
 } timer;
 
+struct pauseIndicationScene;
+
+/**
+* pauses the sudoku game
+* @param the cause for the game to be paused
+*/
+void pause(string cause)
+{
+	paused = true;
+	timer.pause();
+
+	if(cause == "on_purpose")
+		pauseIndicationShown = true;
+	else if(cause == "pause_menu")
+		pauseMenuShown = true;
+	else if(cause == "focus_loss")
+		dueToFocusLoss = true;
+	else
+		return;
+}
+
+/**
+* resumes the sudoku game
+*/
+void resume()
+{
+	paused = false;
+	pauseMenuShown = false;
+	pauseIndicationShown = false;
+	dueToFocusLoss = false;
+	
+	timer.resume();
+}
+
 /**
 * Stores the data of a move during the game for later use
 *
@@ -131,6 +196,7 @@ struct positionSystem
 
 	/**
 	* Generates a position on the screen using three factors: margin, factor and index. Made specifically for pens
+	* @param index index of the pen
 	*/
 	Vector2f generatePenPosition(Vector2i index)
 	{
@@ -144,6 +210,39 @@ struct positionSystem
 		return position;
 	}
 };
+
+bool correctMove(Vector2i index, int source[9][9], int num);
+struct scanningSystem
+{
+	/**
+	* updates the values of correct, false moves each frame. Parameters are self explaining
+	*/	
+	void scan(Text unsolvedTemplateText[9][9], int solvedTemplate[9][9], int &completedCellsHolder, int &falseMovesHolder)
+	{
+		completedCellsHolder = 0;
+		int currentFalseMoves = 0;
+
+		for (int i  = 0; i < 9; i++)
+		{
+			for (int j  = 0; j < 9; j++)
+			{
+				string numStr = unsolvedTemplateText[i][j].getString();
+				int num = stoi(numStr);
+				
+				if(num != 0)
+				{
+					if(correctMove({i,j}, solvedTemplate, num))
+						completedCellsHolder++;
+					else
+						currentFalseMoves++;
+				}
+			}	
+		}
+
+		if(currentFalseMoves > falseMovesHolder)
+			falseMovesHolder = currentFalseMoves;
+	}	
+}scanningSys;
 
 /**
 * produces a sudoku pen with some special characteristics
@@ -349,7 +448,7 @@ struct highlightingSystem
 	* @param index the index of the cell
 	*/
 	void highlight(Vector2i index)
-	{
+	{	
 		this -> index = index;
 
 		positionSystem posRects;
@@ -375,7 +474,7 @@ Vector2f center(Text text)
 		textRect.top + textRect.height / 2.0f};
 }
 /**
-* Returns the center of a sprite object
+* Returns the center of a  object
 * @param sprite The Sprite object 
 */
 Vector2f center(Sprite sprite)
@@ -408,6 +507,8 @@ Vector2f center(gif gif);
 struct glyphButton
 {
 	//Variables
+	Event event;
+	
 	Vector2f buttonSize = { 0, 0 },
 	buttonPosition = { 0,0 };
 	
@@ -416,6 +517,7 @@ struct glyphButton
 	IntRect tracer;
 	Sprite spriteState;
 
+	bool downOnce = false; bool clicked = false;
 	short state = 0;
 
 	//functions
@@ -437,7 +539,15 @@ struct glyphButton
 	* @param sprite The sprite that the cursor hovers over.
 	*/
 	bool mouseDown(Sprite sprite){
-		return mouseHover(sprite) && sf::Mouse::isButtonPressed(sf::Mouse::Left);
+		return  mouseHover(sprite) && Mouse::isButtonPressed(Mouse::Left);
+	}
+
+	/**
+	* Returns true if the left mouse button is released while the cursor is in hover state
+	* @param sprite The sprite that the cursor hovers over.
+	*/
+	bool mouseUp(Sprite sprite){
+		return mouseHover(sprite) && (!mouseDown(sprite)) && downOnce;
 	}
 
 	/**
@@ -447,6 +557,8 @@ struct glyphButton
 	*/
 	void create(sf::Vector2f pos, Vector2f size, string directory)
 	{
+		clicked = false;
+		
 		buttonPosition = pos;
 		spriteState.setPosition(buttonPosition);
 
@@ -457,7 +569,8 @@ struct glyphButton
 		textureSheet.loadFromFile(directory);
 
 		spriteState.setTexture(textureSheet);
-		
+
+		//appearance
 		if(mouseHover(spriteState))
 		{
 			tracer.left = buttonSize.x;
@@ -466,6 +579,8 @@ struct glyphButton
 			
 			if(mouseDown(spriteState))
 			{
+				downOnce = true;
+
 				tracer.left = buttonSize.x * 2;
 
 				state = 2;
@@ -477,8 +592,19 @@ struct glyphButton
 
 			state = 0;
 		}
-		
 		spriteState.setTextureRect(tracer);
+		
+		//functionality
+		if(mouseUp(spriteState))
+		{
+			clicked = true;
+
+			downOnce = false;
+		}
+
+		//cancels all operations if the mouse cursor exits the bounds of the button
+		if(!mouseHover(spriteState))
+			downOnce = false;
 		
 		window.draw(spriteState);
 	}
@@ -489,7 +615,7 @@ struct glyphButton
 */
 bool clicked(glyphButton btn)
 {
-	if(btn.state == 2)
+	if(btn.clicked)
 		return true;
 	return false;
 }
@@ -540,100 +666,73 @@ Vector2f center(gif gif)
 	return {gif.frameSize.x / 2.0f, gif.frameSize.y / 2.0f};
 }
 
+/**
+* Opens a url in the default browser
+* @url the url to be opened
+*/
 void navigateToUrl(string url)
 {
 	ShellExecute(NULL, "open", url.c_str(), NULL, NULL, SW_SHOWNORMAL);
 }
 
 struct pauseIndicationScene
-{
-	bool dueToInactivity = false;
-	
-	Vector2f position;
-
-	RectangleShape shade;
-	Color shadeColor = { 20,20,20,150 };
-
+{	
 	Texture textureContent;
 	Sprite spriteContent;
 
-	gif dinoGif;
-	
-	Text text;
-
-	Font textFont;
-	
 	glyphButton btnResume;
 
 	/**
 	* renders a pause indication scene
-	* @param dueToInactivity determines whether the pause was due to inactivity or not
+	* @param dueToFocusLoss determines whether the pause was due to inactivity or not
 	*/
-	void create(bool dueToInactivity)
+	void create(bool dueToFocusLoss)
 	{
 		float margin = 20.0f;
 
-		//Shade
-		shade.setPosition({0,0});
-		shade.setSize({WIDTH, HEIGHT});
-		shade.setFillColor(shadeColor);
-		
 		//Content
-		textureContent.loadFromFile("Assets/scenes-content/pause-indication-content.png");
+		textureContent.loadFromFile("Assets/scenes-content/pause_indication_content.png");
 		spriteContent.setTexture(textureContent);
-		spriteContent.setOrigin(center(spriteContent));
-		spriteContent.setPosition(center(window));
 
-		//gif
-		dinoGif.frameSize = {200,200};
-		dinoGif.numFrames = 10;
-		dinoGif.spriteFrame.setOrigin(center(dinoGif));
-		dinoGif.gifPosition = {center(window).x, spriteContent.getGlobalBounds().top + 110};
-
-		//Text
-		text.setString("Paused");
-		text.setFont(textFont);
-		text.setFillColor(Color(52,193,206));
-		text.setCharacterSize(64);
-		text.setOrigin(center(text));
-		text.setPosition(center(window).x, spriteContent.getGlobalBounds().top + 220);
-		
-		
-		//Button
-		btnResume.spriteState.setOrigin(25,25);
-		btnResume.spriteState.setScale(0.8,0.8);
-		
-		window.draw(shade);
 		window.draw(spriteContent);
-		dinoGif.animate("Assets/sprite_sheets/dino_dance.png");
-		window.draw(text);
-		FloatRect frameContent = spriteContent.getGlobalBounds();
-		if(!dueToInactivity)
-			btnResume.create({center(window).x, frameContent.top + 320.0f}, {50,50} ,"Assets/buttons/resume.png");
+
+		btnResume.spriteState.setScale(0.8,0.8);
+
+		if(clicked(btnResume))
+			resume();
+
+		if(!dueToFocusLoss)
+			btnResume.create({225,405}, {50,50} ,"Assets/buttons/pause_indication/resume.png");
 	}
-} pauseScene;
+} pauseIndicationScene;
 
 struct MainMenuScene
 {
 	Texture textureContent;
 	Sprite spriteContent;
 
-	glyphButton btnNewGame, btnHowToPlay, btnStatistics, btnSettings, btnCredits; 
+	glyphButton btnNewGame, btnHowToPlay, btnStatistics, btnSettings, btnCredits;
 
-	/**
-	* renders the main menu scene
-	*/
-	void create()
+	void loadResources()
 	{
-		//content
-		textureContent.loadFromFile("Assets/scenes-content/main-menu-content.png");
-		spriteContent.setTexture(textureContent);
+		textureContent.loadFromFile("Assets/scenes-content/main_menu_content.png");
+	}
 
-		//buttons
-		positionSystem posButtons;
-		posButtons.margin = { 26, 0};
-		posButtons.factor = { 300,35 };
+	void initObjects()
+	{
+		spriteContent = Sprite(textureContent);
+	}
 
+	void prepareForRender()
+	{
+		loadResources();
+		initObjects();
+	}
+
+	void updateObjects() { }
+
+	void render()
+	{
 		window.draw(spriteContent);
 
 		string directory = "Assets/buttons/main_menu/";
@@ -645,6 +744,17 @@ struct MainMenuScene
 		btnStatistics.create({posX, 310}, buttonSize, directory+"statistics.png");
 		btnSettings.create({posX, 345}, buttonSize, directory + "settings.png");
 		btnCredits.create({posX, 380}, buttonSize, directory + "credits.png");
+		
+		if(clicked(btnNewGame))
+			renderedSceneId = "new_game";
+		if(clicked(btnHowToPlay))
+			renderedSceneId = "not_yet_implemented";
+		if(clicked(btnStatistics))
+			renderedSceneId = "not_yet_implemented";
+		if(clicked(btnSettings))
+			renderedSceneId = "not_yet_implemented";
+		if(clicked(btnCredits))
+			renderedSceneId = "credits";
 	}
 	
 }mainMenuScene;
@@ -655,32 +765,50 @@ struct newGameScene
 	Sprite spriteContent;
 
 	glyphButton btnEasy, btnMedium, btnHard, btnExpert;
-
-	/**
-	* renders the main menu scene
-	*/
-	void create()
+	Vector2f buttonSize = {265,35};
+	float posX = 26.0f;
+	
+	void loadResources()
 	{
-		//content
 		textureContent.loadFromFile("Assets/scenes-content/new_game_content.png");
-		spriteContent.setTexture(textureContent);
-
-		//buttons
-		Vector2f buttonSize = {265,35};
-		float posX = 26.0f;
 		
-		positionSystem posButtons;
-		posButtons.margin = { posX, 0};
-		posButtons.factor = buttonSize;
+	}
 
+	void initObjects()
+	{
+		spriteContent = Sprite(textureContent);
+	}
+
+	void updateObjects()
+	{
+		
+	}
+
+	void prepareForRender()
+	{
+		loadResources();
+		initObjects();
+	}
+	
+	void render()
+	{
 		window.draw(spriteContent);
-
+		
 		string directory = "Assets/buttons/new_game/";
 		
 		btnEasy.create({posX, 240}, buttonSize, directory+"easy.png");
 		btnMedium.create({posX, 275}, buttonSize,  directory+"medium.png");
 		btnHard.create({posX, 310}, buttonSize, directory+"hard.png");
 		btnExpert.create({posX, 345}, buttonSize, directory + "expert.png");
+
+		if(clicked(btnEasy))
+			gameDifficulty = "easy";
+		if(clicked(btnMedium))
+			gameDifficulty = "medium";
+		if(clicked(btnHard))
+			gameDifficulty = "hard";
+		if(clicked(btnExpert))
+			gameDifficulty = "expert";
 	}
 }newGameScene;
 
@@ -689,55 +817,83 @@ struct creditsScene
 	Texture textureContent;
 	Sprite spriteContent;
 
-	glyphButton btnGithub, btnWebsite, btnBack;
+	glyphButton btnGithub, btnWebsite;
 
-	/**
-	* renders the main menu scene
-	*/
-	void create()
+	void loadResources()
 	{
-		//content
 		textureContent.loadFromFile("Assets/scenes-content/credits_content.png");
-		spriteContent.setTexture(textureContent);
+	}
 
+	void initObjects()
+	{
+		spriteContent = Sprite(textureContent);
+	}
+
+	void perpareForRender()
+	{
+		loadResources();
+		initObjects();
+	}
+
+	void updateObjects(){ }
+
+	void render()
+	{
+		window.draw(spriteContent);
+		
 		//buttons
 		Vector2f buttonSize = {64,64};
-		float posY = 388.0f;
+		float posY = 410.0f;
 		
-		positionSystem posButtons;
-		posButtons.factor = buttonSize;
-
-		window.draw(spriteContent);
-
 		string directory = "Assets/buttons/credits/";
 		
 		btnWebsite.create({175, posY}, buttonSize, directory+"website.png");
 		btnGithub.create({261, posY}, buttonSize,  directory+"github.png");
-		btnBack.create({368, 595}, {112,35}, directory+"back.png");
+
+		if(clicked(btnWebsite))
+			navigateToUrl("https://google.com");
+		if(clicked(btnGithub))
+			navigateToUrl("https://github.com/adhamali450/Sudoku");
 	}
 } creditsScene;
 
+struct notYetImplementedScene
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	void loadResources()
+	{
+		textureContent.loadFromFile("Assets/scenes-content/not_yet_implemented_content.png");
+	}
+
+	void initObjects()
+	{
+		spriteContent = Sprite(textureContent);
+	}
+
+	void prepareForRender()
+	{
+		loadResources();
+		initObjects();
+	}
+
+	void updateObjects() { }
+
+	void render()
+	{
+		window.draw(spriteContent);
+	}
+} notYetImplementedScene;
 #pragma endregion 
 
-#pragma region GLOBAL VARIABLES
-#pragma region Game data
-int completedCells = 0; //Number of cells filled with correct (user wins when 81)
-int falseMoves = 0; //false moves taken, (game will be over after 3 false moves)
-int hints = 0;
-string difficulty; //Game difficulty, (Easy, Normal, Hard, Expert)
-string gameTime;
-#pragma endregion
-
-const int MOVE_SLEEP_DURATION = 150, TAPPING_SLEEP_DURATION = 200;
-
-Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(195,20,50);
-
-//Used to trace the pen in order to move it using the keyboard arrows and knowing the current position 
-Vector2i penTracer = { 0,0 };
-
-bool pausedDueToInactivity = false;
-bool paused = false;
-#pragma endregion
+string toUpper(string str)
+{
+	string strUpper = "";
+	for(char c : str)
+			strUpper += std::toupper(c);
+	return strUpper;
+}
 
 /**
 * produces a sudoku pen with some special characteristics
@@ -835,6 +991,7 @@ void hint(Text source[9][9], int reference[9][9], Vector2i index)
 	if(source[index.x][index.y].getString() == "0")
 	{
 		source[index.x][index.y].setString(to_string(reference[index.x][index.y]));
+		hints++;
 	}
 }
 
@@ -848,28 +1005,6 @@ void hint(Text source[9][9], int reference[9][9], Vector2i index)
 void updateText(Text& textObj, string initialString, string newData)
 {
 	textObj.setString(initialString + newData);
-}
-
-/**
-* Pauses the sudoku game
-*
-* @param dueToInactivity Indicates whether the pause was due to inactivity or not
-*/
-void pause(bool dueToInactivity)
-{
-	timer.pause();
-	paused = true;
-	pausedDueToInactivity = dueToInactivity;
-}
-
-/**
-* Resumes the sudoku game
-*/
-void resume()
-{
-	timer.resume();
-	paused = false;
-	pausedDueToInactivity = false;
 }
 
 /**
@@ -950,144 +1085,248 @@ void loadTemplate(int host[9][9], string directory)
 	}
 }
 
-bool newGameClicked = false;
-bool creditsClicked = false;
+bool gameRestarted = false;
 
-int main()
+void quit(string sceneID)
 {
-	int unsolvedTemplate[9][9];
-	loadTemplate(unsolvedTemplate, "Assets/templates/unsolved/easy.txt");
+	resume();
+	gameInProgress = false;
+	gameDifficulty = "";
+	renderedSceneId = sceneID;
+}
 
-	Text unsolvedTemplateText[9][9]; //Sudoku numbers to be drawn
-	
-	int solvedTemplate[9][9];
-	loadTemplate(solvedTemplate, "Assets/templates/solved/easy.txt");
+struct winingMenu
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnContinue;
+
+	void create(Font font)
+	{
+		textureContent.loadFromFile("Assets/scenes-content/win_content.png");
+		spriteContent = Sprite(textureContent);
+
+		window.draw(spriteContent);		
+
+		Color textColor = Color(238,134,34);
+		float posX = 270.0f;
 		
-#pragma region Images
-	Texture textureBackground;
-	textureBackground.loadFromFile("Assets/Images/background7.png");
-	Sprite spriteBackground = Sprite(textureBackground);
-	
-	Texture textureGrid;
-	textureGrid.loadFromFile("Assets/Images/grid.png");
-	Sprite spriteGrid(textureGrid);
-	spriteGrid.setPosition({25, 120});
-#pragma endregion,
+		Text difficultyText = Text(toUpper(gameDifficulty), font, 17);
+		difficultyText.setFillColor(textColor);
+		difficultyText.setPosition({posX, 380.5});
+		
+		Text timeText = Text(timer.getElapsedTime(), font, 15);
+		timeText.setFillColor(textColor);
+		timeText.setPosition({posX, 411});
 
-#pragma region Top glyph buttons
+		Text falseMovesText = Text(to_string(falseMoves), font, 15);
+		falseMovesText.setFillColor(textColor);
+		falseMovesText.setPosition({posX, 441.5});
+
+		Text hintsText = Text(to_string(hints), font, 15);
+		hintsText.setFillColor(textColor);
+		hintsText.setPosition({posX, 472});
+
+		window.draw(difficultyText);
+		window.draw(timeText);
+		window.draw(falseMovesText);
+		window.draw(hintsText);
+		
+		string directory = "Assets/buttons/win_lose/";
+		Vector2f buttonSize = {150,29.14};
+
+		btnContinue.create({187, 520}, buttonSize, directory+"continue.png");
+	}
+} winingMenu;
+
+struct loseMenu
+{
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnContinue, btnRestart;
+
+	void create()
+	{
+		textureContent.loadFromFile("Assets/scenes-content/lose_content.png");
+		spriteContent = Sprite(textureContent);
+
+		window.draw(spriteContent);		
+
+		string directory = "Assets/buttons/win_lose/";
+		Vector2f buttonSize = {150,29.14};
+
+		btnContinue.create({40, 466.5}, buttonSize, directory+"continue.png");
+		btnRestart.create({301, 466.5}, buttonSize,  directory+"restart.png");
+	}
+} loseMenu;
+
+struct pauseMenu
+{	
+	Texture textureContent;
+	Sprite spriteContent;
+
+	glyphButton btnResume, btnRestart, btnNewGame, btnQuit, btnExit;
+
+	void create()
+	{
+		textureContent.loadFromFile("Assets/scenes-content/pause_menu_content.png");
+		spriteContent = Sprite(textureContent);
+
+		window.draw(spriteContent);		
+
+		string directory = "Assets/buttons/pause_menu/";
+		Vector2f buttonSize = {265,35};
+		float posX = 26.0f;
+
+		btnResume.create({posX, 220}, buttonSize, directory+"resume.png");
+		btnRestart.create({posX, 275}, buttonSize,  directory+"restart.png");
+		btnNewGame.create({posX, 310}, buttonSize, directory+"new_game.png");
+		btnQuit.create({posX, 345}, buttonSize, directory + "quit.png");
+		btnExit.create({posX, 380}, buttonSize, directory + "exit.png");
+
+		if(clicked(btnResume))
+			resume();
+		if(clicked(btnRestart))
+		{
+			gameRestarted = true;
+		}
+		if(clicked(btnNewGame))
+			quit("new_game");
+		if(clicked(btnQuit))
+			quit("main_menu");
+		if(clicked(btnExit))
+			exit(0);
+	}
+}pauseMenu;
+
+struct mainGameScene
+{
+	///templates
+	int unsolvedTemplate[9][9];
+	Text unsolvedTemplateText[9][9];
+	int solvedTemplate[9][9];
+	///images
+	Texture textureBackground; Sprite spriteBackground;
+	Texture textureGrid; Sprite spriteGrid;
+	///buttons
 	string btnIds[5] = {"menu", "hint", "pause", "undo", "settings"};
 	glyphButton buttons[5];
-#pragma endregion
-	
-#pragma region Labels
-	float textScale = 0.7f,
-		positionY = 580.0f;
-
-	//Fonts (Product Sans)
+	///labels
+	////fonts
 	Font googleRegular, googleBlack, googleBold;
-	googleRegular.loadFromFile("Assets/fonts/ProductSans-Regular.ttf");
-	googleBold.loadFromFile("Assets/fonts/ProductSans-Bold.ttf");
-	googleBlack.loadFromFile("Assets/fonts/ProductSans-Black.ttf");
-	
 	Text difficultyText; //Game difficulty
-	difficultyText.setString("NORMAL");
-	difficultyText.setFont(googleBold);
-	difficultyText.setScale({ textScale,textScale});
-	difficultyText.setPosition(25, positionY);
-
 	Text falseMovesText; //Number of false moves
-	falseMovesText.setFont(googleBold);
-	falseMovesText.setFillColor(Color(255, 128, 128));
-	falseMovesText.setScale({ textScale,textScale });
-	falseMovesText.setPosition(160, positionY);
-
 	Text timeText; //Game time
-	timeText.setFont(googleBold);
-	timeText.setScale({ textScale,textScale });
-	timeText.setPosition(380, positionY);
-#pragma endregion
-
-#pragma region Sudoku Pens
+	///pens
 	RectangleShape pen, shadowPen;
-
-	//Styling
-	/////////Main pen
-	createPenInstance(pen, 0);
-	
-	/////////Shadow pen
 	bool drawShadowPen = false;
-	createPenInstance(shadowPen, 1);
-#pragma endregion
 
-
-	/******************************************************************************************
-	*******COPYING THE CONTENT OF THE INTEGER UNSOLVED ARRAY TO THE TEXT UNSOLVED ARRAY********
-	******************************************************************************************/
-	for (int i = 0; i < 9; i++)
+	void copyTemplates()
 	{
-		for (int j = 0; j < 9; j++)
+		for (int i = 0; i < 9; i++)
 		{
-			int num = unsolvedTemplate[i][j];
-			//setting string
-			unsolvedTemplateText[i][j].setString(to_string(num));
-			unsolvedTemplateText[i][j].setFont(googleBlack);
+			for (int j = 0; j < 9; j++)
+			{
+				int num = unsolvedTemplate[i][j];
+				//setting string
+				unsolvedTemplateText[i][j] = Text(to_string(num), googleBlack);
 
-			//setting position
-			positionSystem posNumber;
-			posNumber.margin = posNumber.NUMBERS_MARGIN;
-			posNumber.factor = {50, 50};
-			posNumber.index = {j, i};
-			
-			Vector2f pos = posNumber.generatePosition();
-			unsolvedTemplateText[i][j].setPosition(pos);
+				//setting position
+				positionSystem posNumber;
+				posNumber.margin = posNumber.NUMBERS_MARGIN;
+				posNumber.factor = {50, 50};
+				posNumber.index = {j, i};
+				
+				Vector2f pos = posNumber.generatePosition();
+				unsolvedTemplateText[i][j].setPosition(pos);
+			}
 		}
 	}
 
-	//Game loop
-	while (window.isOpen())
+	void restart()
 	{
-		Event event;
-		while (window.pollEvent(event))
-		{
-			switch (event.type)
-			{
-			case Event::Closed:
-				window.close();
-				break;
-			case Event::LostFocus:
-				if(!paused)
-					pause(true);
-				break;
-			case Event::GainedFocus:
-				if(paused && pausedDueToInactivity)
-					resume();
-				break;
-			default: break;
-			}
-		}
+		copyTemplates();
+		falseMoves = 0;
+		gameRestarted = false;
+		resume();
+		timer.reset();
+	}
+	
+	void loadResources(string difficulty)
+	{
+		//templates
+		loadTemplate(unsolvedTemplate, "Assets/templates/unsolved/" + difficulty + ".txt");		
+		loadTemplate(solvedTemplate, "Assets/templates/solved/" + difficulty + ".txt");
 
-		/************************
-		*****UPDATING LABELS*****
-		*************************/
-#pragma region Updating Labels
+		//images
+		textureBackground.loadFromFile("Assets/Images/background7.png");
+		textureGrid.loadFromFile("Assets/Images/grid.png");
+		//fonts
+		googleRegular.loadFromFile("Assets/fonts/ProductSans-Regular.ttf");
+		googleBold.loadFromFile("Assets/fonts/ProductSans-Bold.ttf");
+		googleBlack.loadFromFile("Assets/fonts/ProductSans-Black.ttf");
+	}
 
+	void initObjects()
+	{
+		//images
+		spriteBackground = Sprite(textureBackground);
+		spriteGrid = Sprite(textureGrid);
+		spriteGrid.setPosition({25, 120});
+		//labels
+		float textScale = 0.7f,
+		positionY = 580.0f;
+
+		difficultyText.setString(toUpper(gameDifficulty));
+		difficultyText.setFont(googleBold);
+		difficultyText.setScale({ textScale,textScale});
+		difficultyText.setPosition(25, positionY);
+
+		falseMovesText.setFont(googleBold);
+		falseMovesText.setFillColor(Color(255, 128, 128));
+		falseMovesText.setScale({ textScale,textScale });
+		falseMovesText.setPosition(160, positionY);
+
+		timeText.setFont(googleBold);
+		timeText.setScale({ textScale,textScale });
+		timeText.setPosition(380, positionY);
+		//pens
+		createPenInstance(pen, 0);
+		penTracer = {0,0};
+		
+		createPenInstance(shadowPen, 1);
+
+		//copying templates
+		copyTemplates();
+	}
+
+	void prepareForRender(string gameMode)
+	{
+		loadResources(gameMode);
+		initObjects();
+
+		timer.reset();
+	}
+	
+	void updateObjects(Event event)
+	{
+		if(gameRestarted)
+			restart();
+
+		#pragma region Updating Labels
 		updateText(falseMovesText, "FALSE MOVES: ", to_string(falseMoves));
 
-		//updating the time text unless the game is paused
-		if (!paused)
-		{
-			gameTime = timer.getElapsedTime();
-			updateText(timeText, "TIME: ", gameTime);
-		}
-#pragma endregion
+		gameTime = timer.getElapsedTime();
+		updateText(timeText, "TIME: ", gameTime);
 
-
+		#pragma endregion
 		/******************************************************
 		 ****************KEYBOARD/MOUSE INPUT******************
 		 ******************************************************/
-
 		
-		//Stop all kinds of input when the game is paused
+		//Stop all kinds of input and updating when the game is paused
 		if (!paused)
 		{
 #pragma region KEYBOARD/MOUSE INPUT
@@ -1217,7 +1456,7 @@ int main()
 				if (modifiableCell({penTracer.y, penTracer.x}, solvedTemplate, unsolvedTemplate))
 				{
 					unsolvedTemplateText[penTracer.y][penTracer.x].setString(to_string(numPressed));
-					unsolvedTemplateText[penTracer.y][penTracer.x].setFont(googleRegular);
+					unsolvedTemplateText[penTracer.y][penTracer.x].setFont(googleBold);
 
 					//coloring the number to indicate either correct or incorrect move
 					if (correctMove({penTracer.y, penTracer.x}, solvedTemplate, numPressed))
@@ -1235,24 +1474,30 @@ int main()
 			/********************************************************
 			 ********************UN-DOING A MOVE*********************
 			 *******************************************************/
-#pragma region 5-UNDO
+#pragma region keyboard shortcuts
+			//undo ctrl+Z
 			if (Keyboard::isKeyPressed(Keyboard::Z) && event.key.control) //user pressed ctrl+z in order to undo the last move
-			{
 				undo(unsolvedTemplateText, lastMove);
-			}
+			//hint ctrl+h
+			if (Keyboard::isKeyPressed(Keyboard::H) && event.key.control) //user pressed ctrl+h in order to get a hint
+				hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
 #pragma endregion
-			
+
 #pragma endregion
 
 
 #pragma region Buttons handling
+		if(clicked(buttons[0])) //Pause menu
+		{
+			pause("pause_menu");
+		}
 		if(clicked(buttons[1])) //Hint
 		{
 			hint(unsolvedTemplateText, solvedTemplate, {penTracer.y, penTracer.x});
 		}
 		if(clicked(buttons[2])) //Pause
 		{
-			pause(false);
+			pause("on_purpose");
 		}
 		if(clicked(buttons[3])) //Undo
 		{
@@ -1260,41 +1505,13 @@ int main()
 		}
 #pragma endregion
 
-#pragma region calculating completed cells and falseMoves
-			completedCells = 0;
-			int currentFalseMoves = 0;
-
-			for (int i  = 0; i < 9; i++)
-			{
-				for (int j  = 0; j < 9; j++)
-				{
-					string numStr = unsolvedTemplateText[i][j].getString();
-					int num = stoi(numStr);
-					
-					if(num != 0)
-					{
-						if(correctMove({i,j}, solvedTemplate, num))
-							completedCells++;
-						else
-							currentFalseMoves++;
-					}
-				}	
-			}
-
-			if(currentFalseMoves > falseMoves)
-				falseMoves = currentFalseMoves;
-#pragma endregion
-
+			//calculating completed cells and falseMoves each frame
+			scanningSys.scan(unsolvedTemplateText, solvedTemplate, completedCells, falseMoves);
 		}
+	}
 
-
-		/********************************************************
-		 *******UPDATING AND SWITCHING BUFFERS*******************
-		 *******************************************************/
-#pragma region UPDATING AND SWITCHING BUFFERS
-		 //clearing the window
-		window.clear();
-
+	void render()
+	{	
 		//Background 
 		window.draw(spriteBackground);		
 		//9x9 grid
@@ -1313,7 +1530,7 @@ int main()
 				posButtons.margin.x += 50;
 			}
 
-			string directory = "Assets/buttons/" + btnIds[i] + ".png";
+			string directory = "Assets/buttons/main_game/" + btnIds[i] + ".png";
 			buttons[i].create(posButtons.generatePosition(), {50,50}, directory);
 		}
 		
@@ -1341,34 +1558,125 @@ int main()
 		window.draw(timeText);
 		window.draw(falseMovesText);
 		window.draw(difficultyText);
-		
-		//Pause menu to indicate a paused game
-		if (paused)
-		{
-			pauseScene.textFont = googleRegular;
-			pauseScene.create(pausedDueToInactivity);
 
-			if(clicked(pauseScene.btnResume))
-				resume();
+		if(paused)
+		{
+			if(pauseMenuShown)
+				pauseMenu.create();
+		
+			if (pauseIndicationShown)
+				pauseIndicationScene.create(false);
 		}
 
-		if(clicked(mainMenuScene.btnNewGame))
-			newGameClicked = true;
-		if(clicked(mainMenuScene.btnCredits))
-			creditsClicked = true;
-		
-		if(!creditsClicked)
-			mainMenuScene.create();
-		else
-			creditsScene.create();
-		
-		/*glyphButton backBtn;
-		backBtn.create({5,5}, {64,64}, "github.png");*/
-		
-		window.display();
-
-#pragma endregion 
+		if(completedCells == 81)
+		{
+			pause("");
+			winingMenu.create(googleBlack);
+			if(clicked(winingMenu.btnContinue))
+				quit("main_menu");
+		}
+		if(falseMoves > 3)
+		{
+			pause("");
+			loseMenu.create();
+			if(clicked(loseMenu.btnContinue))
+				quit("main_menu");
+			if(clicked(loseMenu.btnRestart))
+				gameRestarted = true;
+		}
 	}
+} mainGameScene;
 
-	return 0;
+int main()
+{
+	//scenes preparation
+	mainMenuScene.prepareForRender(); 
+	newGameScene.prepareForRender();
+	creditsScene.perpareForRender();
+	notYetImplementedScene.prepareForRender();
+
+	//back button
+	glyphButton btnBack;
+	
+	while (window.isOpen())
+	{
+		while(true)
+		{
+			bool difficultyChosen = gameDifficulty == "easy" |  gameDifficulty == "medium"  |  gameDifficulty == "hard" |  gameDifficulty == "expert";		
+			if(difficultyChosen) break;
+			
+			Event event;
+			while (window.pollEvent(event))
+			{
+				switch (event.type)
+				{
+				case Event::Closed:
+					exit(0);
+					break;
+				default: break;
+				}
+			}
+
+			window.clear();
+
+#pragma region choosing which scene to render
+			if(renderedSceneId == "main_menu")
+				mainMenuScene.render();
+			else if(renderedSceneId == "new_game")
+				newGameScene.render();
+			else if(renderedSceneId == "credits")
+				creditsScene.render();
+			else if(renderedSceneId == "not_yet_implemented")
+				notYetImplementedScene.render();
+#pragma endregion
+
+			if(renderedSceneId != "main_menu")
+				btnBack.create({395, 606}, {75,23}, "Assets/buttons/back.png");
+
+			window.display();
+			
+			if(clicked(btnBack) | Keyboard::isKeyPressed(Keyboard::Escape))
+			{
+				if(renderedSceneId != "main_menu")
+					renderedSceneId = "main_menu";
+			}
+		}
+
+		mainGameScene.prepareForRender(gameDifficulty);
+
+		gameInProgress = true;
+		falseMoves = 0;
+		
+		while (gameInProgress)
+		{
+			Event event;
+			while (window.pollEvent(event))
+			{
+				switch (event.type)
+				{
+				case Event::Closed:
+					exit(0);
+					break;
+				case Event::LostFocus:
+					if(!paused)
+						pause("focus_loss");
+					break;
+				case Event::GainedFocus:
+					if(paused & dueToFocusLoss)
+						resume();
+					break;
+				default: break;
+				}
+			}
+
+			mainGameScene.updateObjects(event);
+			
+			window.clear();
+
+			mainGameScene.render();
+						
+			window.display();
+		}	
+	}
+	
 }
