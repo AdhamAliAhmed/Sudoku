@@ -17,7 +17,7 @@ using namespace std;
 const int WIDTH = 500, HEIGHT = 650;
 
 VideoMode videoMode(WIDTH, HEIGHT);
-RenderWindow window(videoMode, "SUDOKU", Style::Close);
+RenderWindow window(videoMode, "Astro Sudoku (beta)", Style::Close);
 
 #pragma region GLOBAL VARIABLES
 #pragma region Game data
@@ -44,7 +44,7 @@ const string CREDITS_SCENE_ID = "credits";
 string renderedSceneId = MAIN_MENU_SCENE_ID;
 bool gameInProgress = true;
 
-Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(195,20,50);
+Color correctMoveColor = Color(0,152,250), falseMoveColor = Color(194,24,8);
 
 //Used to trace the pen in order to move it using the keyboard arrows and knowing the current position 
 Vector2i penTracer = { 0,0 };
@@ -903,7 +903,7 @@ string toUpper(string str)
 */
 void createPenInstance(RectangleShape &pen, short type)
 {
-	RectangleShape penObj({35,35});
+	RectangleShape penObj({34,35});
 
 	penObj.setOutlineThickness(3);
 
@@ -919,8 +919,8 @@ void createPenInstance(RectangleShape &pen, short type)
 	outlineColor = Color(255,255,255,90);
 		break;
 	case 2:
-	fillColor = Color(0,218,255, 50);
-	outlineColor = Color(0,218,255, 150);
+	fillColor = Color(170, 183, 184, 100);
+	outlineColor = Color(33, 47, 60);
 		break;
 	default:
 		fillColor = Color::Green;
@@ -1422,9 +1422,6 @@ struct mainGameScene
 			{
 				Vector2i index = { (mousePos.x - 25) / 50,(mousePos.y - 120) / 50 };
 
-				/*cout << index.y + 1 << ',' << index.x + 1 << endl;
-				system("CLS");*/
-				
 				positionSystem shadowPenPos;
 				shadowPen.setPosition(shadowPenPos.generatePenPosition(index));
 
@@ -1533,6 +1530,15 @@ struct mainGameScene
 			string directory = "Assets/buttons/main_game/" + btnIds[i] + ".png";
 			buttons[i].create(posButtons.generatePosition(), {50,50}, directory);
 		}
+
+		//Primary Pen and shadow pen
+		window.draw(pen);
+		if(drawShadowPen)
+			window.draw(shadowPen);
+
+		//Highlighting
+		highlightingSystem sys;
+		sys.highlight({penTracer.x, penTracer.y});
 		
 		//Drawing Numbers
 		for(int i = 0; i < 9; i++)
@@ -1544,15 +1550,6 @@ struct mainGameScene
 				window.draw(unsolvedTemplateText[j][i]);
 			}
 		}
-
-		//Primary Pen and shadow pen
-		window.draw(pen);
-		if(drawShadowPen)
-			window.draw(shadowPen);
-
-		//Highlighting
-		highlightingSystem sys;
-		sys.highlight({penTracer.x, penTracer.y});
 		
 		//Labels
 		window.draw(timeText);
@@ -1587,6 +1584,11 @@ struct mainGameScene
 	}
 } mainGameScene;
 
+bool difficultyChosen()
+{
+	return gameDifficulty == "easy" |  gameDifficulty == "medium"  |  gameDifficulty == "hard" |  gameDifficulty == "expert";
+}
+
 int main()
 {
 	//scenes preparation
@@ -1602,8 +1604,7 @@ int main()
 	{
 		while(true)
 		{
-			bool difficultyChosen = gameDifficulty == "easy" |  gameDifficulty == "medium"  |  gameDifficulty == "hard" |  gameDifficulty == "expert";		
-			if(difficultyChosen) break;
+			if(difficultyChosen()) break;
 			
 			Event event;
 			while (window.pollEvent(event))
