@@ -1268,7 +1268,7 @@ struct mainGameScene
 	Texture textureBackground; Sprite spriteBackground;
 	Texture textureGrid; Sprite spriteGrid;
 	///buttons
-	string btnIds[5] = {"menu", "hint", "pause", "undo", "settings"};
+	string btnIds[5] = {"menu", "hint", "pause", "undo"};
 	glyphButton buttons[5];
 	///labels
 	////fonts
@@ -1573,15 +1573,15 @@ struct mainGameScene
 
 		//Top glyph buttons positioning and drawing
 		positionSystem posButtons;
-		posButtons.margin = { 25, 25 };
+		posButtons.margin = { 25, 30};
 		posButtons.factor = { 50,45 };
 		
-		for (int i = 0; i < 5; i++)
+		for (int i = 0; i < 4; i++)
 		{
 			posButtons.index = { i, 0 };
 			if (i > 0)
 			{
-				posButtons.margin.x += 50;
+				posButtons.margin.x += 80;
 			}
 
 			string directory = "Assets/buttons/main_game/" + btnIds[i] + ".png";
