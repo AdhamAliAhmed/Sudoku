@@ -39,6 +39,7 @@ const string NEW_GAME_SCENE_ID = "new_game";
 const string MAIN_GAME_SCENE_ID = "main_game";
 const string CREDITS_SCENE_ID = "credits";
 #pragma endregion
+
 #pragma endregion
 
 string renderedSceneId = MAIN_MENU_SCENE_ID;
