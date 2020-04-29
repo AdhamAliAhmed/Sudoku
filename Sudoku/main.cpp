@@ -1062,7 +1062,7 @@ void loadTemplate(int host[9][9], string directory)
 	ifstream stream(directory);
 	if(stream.is_open())
 	{
-		int templateIndex = getRandom(0,49);
+		int templateIndex = getRandom(0,TEMPLATES_COUNT - 1);
 
 		int pointerPos = (83* templateIndex);
 		stream.seekg(pointerPos);
