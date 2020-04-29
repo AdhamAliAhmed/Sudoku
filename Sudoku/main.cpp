@@ -749,7 +749,7 @@ struct MainMenuScene
 		if(clicked(btnNewGame))
 			renderedSceneId = "new_game";
 		if(clicked(btnHowToPlay))
-			renderedSceneId = "not_yet_implemented";
+			renderedSceneId = "how_to_play";
 		if(clicked(btnStatistics))
 			renderedSceneId = "not_yet_implemented";
 		if(clicked(btnSettings))
@@ -812,6 +812,62 @@ struct newGameScene
 			gameDifficulty = "expert";
 	}
 }newGameScene;
+
+struct howToPlayScene
+{
+	Texture textureContent, textureRules, textureControls;
+	Sprite spriteContent, spriteRules, spriteControls;
+
+	glyphButton btnRules, btnControls;
+
+	string renderedSection = "rules";
+	
+	void loadResources()
+	{
+		textureContent.loadFromFile("Assets/scenes-content/how_to_play_content.png");
+		textureRules.loadFromFile("Assets/scenes-content/rules_section.png");
+		textureControls.loadFromFile("Assets/scenes-content/controls_section.png");
+	}
+
+	void initObjects()
+	{
+		spriteContent = Sprite(textureContent);
+		spriteRules = Sprite(textureRules);
+		spriteControls = Sprite(textureControls);
+	}
+
+	void prepareForRender()
+	{
+		loadResources();
+		initObjects();
+	}
+
+	void updateObjects() { }
+
+	void render()
+	{
+		window.draw(spriteContent);
+
+
+		string directory = "Assets/buttons/how_to_play/";
+		if(renderedSection == "rules")
+		{
+			window.draw(spriteRules);
+
+			btnControls.create({130, 160},{141.5, 29.1},directory + "controls.png");
+			if(clicked(btnControls))
+				renderedSection = "controls";
+		}
+		else if(renderedSection == "controls")
+		{
+			window.draw(spriteControls);
+
+			btnRules.create({24.617, 160},{78.9, 29.1},directory + "rules.png");
+			if(clicked(btnRules))
+				renderedSection = "rules";
+		}
+	}
+} howToPlayScene;
 
 struct creditsScene
 {
@@ -1595,6 +1651,7 @@ int main()
 	//scenes preparation
 	mainMenuScene.prepareForRender(); 
 	newGameScene.prepareForRender();
+	howToPlayScene.prepareForRender();
 	creditsScene.perpareForRender();
 	notYetImplementedScene.prepareForRender();
 
@@ -1626,6 +1683,8 @@ int main()
 				mainMenuScene.render();
 			else if(renderedSceneId == "new_game")
 				newGameScene.render();
+			else if(renderedSceneId == "how_to_play")
+				howToPlayScene.render();
 			else if(renderedSceneId == "credits")
 				creditsScene.render();
 			else if(renderedSceneId == "not_yet_implemented")
